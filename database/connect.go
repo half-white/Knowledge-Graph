@@ -5,16 +5,14 @@ import (
 	"log"
 	"time"
 
-	"github.com/neo4j/neo4j-go-driver/neo4j"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
 func Connect_Neo4j() neo4j.Driver {
-	// 连接Neo4j系统服务
-	driver, err := neo4j.NewDriver("bolt://localhost:7687", neo4j.BasicAuth("neo4j", "neo4j", ""), func(c *neo4j.Config) {
-		c.Encrypted = false
-	})
+	// 连接Neo4j系统服务（v5驱动，bolt://默认明文连接）
+	driver, err := neo4j.NewDriver("bolt://localhost:7687", neo4j.BasicAuth("neo4j", "neo4j", ""))
 	if err != nil {
 		log.Fatalf("Failed to create Neo4j driver:%v", err)
 	} else {

@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
-	"github.com/neo4j/neo4j-go-driver/neo4j"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j/dbtype"
 )
 
 // 生成图谱逻辑
@@ -33,7 +33,7 @@ func ImportCsv(filename string) *csv.Reader {
 }
 
 // 生成知识图谱：新建数据表，插入三元组节点
-func InsertNode(reader *csv.Reader, neo4j *neo4j.Duration) {
+func InsertNode(reader *csv.Reader, neo4j *dbtype.Duration) {
 	//创建一个批量操作
 
 }

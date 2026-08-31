@@ -9,7 +9,7 @@ require (
 	github.com/go-playground/validator/v10 v10.23.0
 	github.com/google/uuid v1.6.0
 	github.com/ledongthuc/pdf v0.0.0-20240201131950-da5b75280b06
-	github.com/neo4j/neo4j-go-driver v1.8.3
+	github.com/neo4j/neo4j-go-driver/v5 v5.28.4
 	gorm.io/driver/mysql v1.5.7
 	gorm.io/gorm v1.25.12
 )

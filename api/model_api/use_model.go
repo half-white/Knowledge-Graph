@@ -5,6 +5,7 @@ import (
 	"SSE/global"
 	"SSE/models"
 	"SSE/res"
+	"SSE/utils/rag"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -22,7 +23,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/neo4j/neo4j-go-driver/neo4j"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j/dbtype"
 )
 
 // 定义需要输入的请求数据
@@ -92,14 +94,14 @@ func (ModelApi) UseModel(c *gin.Context) {
 	res.Ok(result, text, c)
 }
 
-// 获取文心一言大模型token
+// 获取文心一言大模型token（凭据从环境变量读取，避免硬编码）
 func get_access_token() string {
 	// 构建请求URL
 	rawURL := "https://aip.baidubce.com/oauth/2.0/token"
 	params := url.Values{}
 	params.Add("grant_type", "client_credentials")
-	params.Add("client_id", "BAIDU_CLIENT_ID_REMOVED")             // 请确保使用你的实际Client ID
-	params.Add("client_secret", "BAIDU_CLIENT_SECRET_REMOVED") // 请确保使用你的实际Client Secret
+	params.Add("client_id", os.Getenv("BAIDU_CLIENT_ID"))             // 环境变量BAIDU_CLIENT_ID
+	params.Add("client_secret", os.Getenv("BAIDU_CLIENT_SECRET")) // 环境变量BAIDU_CLIENT_SECRET
 	encodedParams := params.Encode()
 	fullURL := rawURL + "?" + encodedParams
 
@@ -268,9 +270,16 @@ func TypeInModel(content string) string {
 	// responseText := responseData.Choices[0].Message.Content
 	// return responseText
 
-	// GLM4 http调用逻辑
-	apiKey := "GLM_API_KEY_REMOVED"
+	// GLM4 http调用逻辑（API密钥从环境变量读取，避免硬编码）
+	apiKey := os.Getenv("GLM_API_KEY")
 	prompt := "以下是需要处理的文本内容，请筛选出其中你认为最重要的知识点,将有用的知识点转化成三元组,按照'主','谓','宾'的格式(没有则依据上下文补全),全部严格输出成（头实体，关系，尾实体）的格式，只输出最重要的8个三元组,一个一行,不要包含序号和任何其它文字,输出前请严格遵守要求。 \n"
+
+	// RAG检索加强：检索图谱中相似的高价值关系作为参考上下文（失败自动降级为空串）
+	ragContext := rag.BuildRAGContext(global.DB, content)
+	if ragContext != "" {
+		prompt = ragContext + "\n" + prompt
+	}
+
 	url := "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
 	payload := map[string]interface{}{
@@ -348,11 +357,8 @@ func saveToNeo4j(triplets [][]string, id string) {
 		DatabaseName: "neo4j", // 指定要连接的数据库
 	}
 
-	session, err := driver.NewSession(sessionConfig)
-	if err != nil {
-		log.Printf("Failed to create session: %v \n", err)
-		return
-	}
+	// 创建与目标数据库的会话（v5驱动：NewSession直接返回会话）
+	session := driver.NewSession(sessionConfig)
 	defer session.Close()
 
 	// 在业务层面确保操作的原子性情况下，选择不开启事务
@@ -384,6 +390,9 @@ func saveToNeo4j(triplets [][]string, id string) {
 		} else {
 			fmt.Printf("Inserted triple (%s,%s,%s) \n", headEntity, relationship, tailEntity)
 		}
+
+		// RAG加强：判定并保存高价值关系向量（embedding不可用时自动降级跳过）
+		rag.SaveIfHighValue(driver, headEntity, relationship, tailEntity, id)
 	}
 
 	fmt.Printf("All %d triplets have been processed.", len(triplets))
@@ -421,11 +430,8 @@ func displayGraph(uuid string) (string, error) {
 		DatabaseName: "neo4j", // 指定要连接的数据库
 	}
 
-	session, err := driver.NewSession(sessionConfig)
-	if err != nil {
-		log.Printf("Failed to create session: %v \n", err)
-		return "", err
-	}
+	// 创建与目标数据库的会话（v5驱动：NewSession直接返回会话）
+	session := driver.NewSession(sessionConfig)
 	defer session.Close()
 
 	// 查询节点和关系
@@ -455,13 +461,13 @@ func displayGraph(uuid string) (string, error) {
 	for result.Next() {
 		record := result.Record()
 
-		// 提取节点信息
-		nNode1 := record.GetByIndex(0).(neo4j.Node)
-		relationship := record.GetByIndex(1).(neo4j.Relationship)
-		nNode2 := record.GetByIndex(2).(neo4j.Node)
+		// 提取节点信息（v5驱动：Record.Values + dbtype类型）
+		nNode1 := record.Values[0].(dbtype.Node)
+		relationship := record.Values[1].(dbtype.Relationship)
+		nNode2 := record.Values[2].(dbtype.Node)
 
 		// 将节点名称添加到 nodes 列表中（去重处理）
-		headEntityName := nNode1.Props()["name"].(string)
+		headEntityName := nNode1.Props["name"].(string)
 		if _, exists := nodeNames[headEntityName]; !exists {
 			nodeNames[headEntityName] = true
 			graph.Nodes = append(graph.Nodes, Node{
@@ -471,7 +477,7 @@ func displayGraph(uuid string) (string, error) {
 			})
 		}
 
-		tailEntityName := nNode2.Props()["name"].(string)
+		tailEntityName := nNode2.Props["name"].(string)
 		if _, exists := nodeNames[tailEntityName]; !exists {
 			nodeNames[tailEntityName] = true
 			graph.Nodes = append(graph.Nodes, Node{
@@ -481,8 +487,8 @@ func displayGraph(uuid string) (string, error) {
 			})
 		}
 
-		// 添加关系到 links 列表
-		LinkName := relationship.Type()
+		// 添加关系到 links 列表（v5驱动：Relationship.Type为字段）
+		LinkName := relationship.Type
 
 		graph.Links = append(graph.Links, Link{
 			Source: headEntityName,
@@ -606,11 +612,8 @@ func (ModelApi) DeleteGraph(c *gin.Context) {
 		DatabaseName: "neo4j", // 指定要连接的数据库
 	}
 
-	session, err := driver.NewSession(sessionConfig)
-	if err != nil {
-		res.FailWithMessage("创建 Neo4j 会话失败", c)
-		return
-	}
+	// 创建与目标数据库的会话（v5驱动：NewSession直接返回会话）
+	session := driver.NewSession(sessionConfig)
 	defer session.Close()
 
 	// 查询节点和关系
