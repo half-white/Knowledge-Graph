@@ -42,10 +42,26 @@ pipeline {
     stages {
         stage('检出') {
             steps {
-                // 使用 job SCM 自带的 CleanBeforeCheckout：仅清空内容、不删除
-                // 工作区根目录（/Users/xieenping/work/kg-ci 挂在宿主机目录上，
-                // 其父目录属主非 jenkins，deleteDir 会因删除根目录而 EPERM）
-                checkout scm
+                script {
+                    // 本机访问 GitHub 偶发 TLS 中断，检出最多重试 3 次
+                    def checkedOut = false
+                    for (int i = 1; i <= 3; i++) {
+                        try {
+                            // 使用 job SCM 自带的 CleanBeforeCheckout：仅清空内容、
+                            // 不删除工作区根目录（kg-ci 的父目录属主非 jenkins，
+                            // deleteDir 删除根目录会触发 EPERM）
+                            checkout scm
+                            checkedOut = true
+                            break
+                        } catch (Exception e) {
+                            echo "检出失败(第 ${i} 次): ${e.message}"
+                            if (i < 3) sleep time: 5, unit: 'SECONDS'
+                        }
+                    }
+                    if (!checkedOut) {
+                        error('连续 3 次检出失败，终止流水线')
+                    }
+                }
                 sh 'echo "构建版本: $(git rev-parse --short HEAD) @ $(git log -1 --format=%cs)"'
             }
         }
