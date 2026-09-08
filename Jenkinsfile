@@ -17,6 +17,7 @@
 pipeline {
     agent {
         node {
+            label 'built-in'
             customWorkspace '/Users/xieenping/work/kg-ci'
         }
     }
