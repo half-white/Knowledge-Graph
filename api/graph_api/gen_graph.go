@@ -2,7 +2,7 @@ package graph_api
 
 import (
 	"encoding/csv"
-	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -22,7 +22,7 @@ func ImportCsv(filename string) *csv.Reader {
 	// 打开文件
 	file, err := os.Open(filename)
 	if err != nil {
-		fmt.Println("文件打开出错")
+		slog.Error("打开CSV文件出错", "filename", filename, "error", err)
 		return nil
 	}
 

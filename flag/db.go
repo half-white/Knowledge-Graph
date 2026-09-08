@@ -3,7 +3,7 @@ package flag
 import (
 	"SSE/global"
 	"SSE/models"
-	"fmt"
+	"log/slog"
 )
 
 func Makemigrations() {
@@ -12,8 +12,8 @@ func Makemigrations() {
 		&models.GraphModel{},
 	)
 	if err != nil {
-		fmt.Println("[ error ] 生成数据库表结构失败")
+		slog.Error("生成数据库表结构失败", "error", err)
 		return
 	}
-	fmt.Println("[ success ] 生成数据库表结构成功")
+	slog.Info("生成数据库表结构成功")
 }

@@ -1,8 +1,8 @@
 package database
 
 import (
-	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -14,10 +14,16 @@ func Connect_Neo4j() neo4j.Driver {
 	// 连接Neo4j系统服务（v5驱动，bolt://默认明文连接）
 	driver, err := neo4j.NewDriver("bolt://localhost:7687", neo4j.BasicAuth("neo4j", "neo4j", ""))
 	if err != nil {
-		log.Fatalf("Failed to create Neo4j driver:%v", err)
-	} else {
-		fmt.Println("Connecting Neo4j success")
+		slog.Error("创建 Neo4j 驱动失败", "error", err)
+		os.Exit(1)
 	}
+
+	// 验证连接（v5驱动 Driver.VerifyConnectivity）
+	if err := driver.VerifyConnectivity(); err != nil {
+		slog.Error("Neo4j 连接失败", "endpoint", "bolt://localhost:7687", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("Neo4j 连接成功", "endpoint", "bolt://localhost:7687")
 
 	return driver
 }
@@ -27,11 +33,11 @@ func Connect_Mysql() *gorm.DB {
 
 	db, err := gorm.Open(mysql.Open(dsn))
 	if err != nil {
-		log.Fatalf(fmt.Sprintf("[%s]mysql连接失败", dsn))
-		panic(err)
-	} else {
-		fmt.Println("MySQL连接成功")
+		slog.Error("MySQL 连接失败", "dsn", dsn, "error", err)
+		os.Exit(1)
 	}
+	slog.Info("MySQL 连接成功", "addr", "localhost:3306", "database", "knowledge_graph")
+
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxIdleConns(10)               //最大空闲连接数
 	sqlDB.SetMaxOpenConns(100)              //最多可容纳

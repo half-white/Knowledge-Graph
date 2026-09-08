@@ -3,3 +3,16 @@ docs/
 
 # 编译产物
 SSE.exe
+SSE
+
+# 日志输出目录（由 logger 包按天生成，Promtail 采集）
+logs/
+
+# 由 Windows 绝对路径误创建的残留目录
+C:/
+
+# macOS
+.DS_Store
+
+# 编辑器本地配置（调试配置保留在本地，不入库）
+/.vscode/

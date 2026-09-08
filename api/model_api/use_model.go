@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -45,7 +45,7 @@ func (ModelApi) UseModel(c *gin.Context) {
 
 	// 利用go多线程进行大语言模型调用逻辑
 	// 创建一个 slice 存储返回的结果
-	fmt.Printf("文本被拆解成 %d 块 \n", len(parts))
+	slog.Info("文本已拆解", "chunk_count", len(parts))
 	results := make([]string, len(parts))
 	ch := make(chan struct{}, 5) // 生成一个线程池
 
@@ -85,7 +85,7 @@ func (ModelApi) UseModel(c *gin.Context) {
 	// 将neo4j数据库中的相关数据展示成图谱
 	result, _ := displayGraph(uuid)
 	// fmt.Println(string(result))
-	fmt.Printf("Result Type: %T\n", result)
+	slog.Debug("图谱展示结果类型", "type", fmt.Sprintf("%T", result))
 
 	// 自动保留每次生成的知识图谱，以便管理
 	saveGraph(uuid)
@@ -108,7 +108,7 @@ func get_access_token() string {
 	// 创建HTTP请求
 	resp, err := http.Get(fullURL)
 	if err != nil {
-		fmt.Println("Error making GET request:", err)
+		slog.Error("获取文心一言token请求失败", "error", err)
 		return "error"
 	}
 	defer resp.Body.Close()
@@ -116,7 +116,7 @@ func get_access_token() string {
 	// 读取响应体
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("Error reading response body:", err)
+		slog.Error("读取token响应失败", "error", err)
 		return "error"
 	}
 
@@ -124,14 +124,14 @@ func get_access_token() string {
 	var result map[string]interface{}
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		fmt.Println("Error unmarshaling JSON:", err)
+		slog.Error("解析token响应失败", "error", err)
 		return "error"
 	}
 
 	// 获取access_token
 	accessToken, ok := result["access_token"].(string)
 	if !ok {
-		fmt.Println("Error retrieving access_token")
+		slog.Error("获取access_token失败")
 		return "error"
 	}
 
@@ -314,12 +314,12 @@ func TypeInModel(content string) string {
 
 	var responseData ResponseData
 	if err := json.Unmarshal(responseBody, &responseData); err != nil {
-		log.Printf("Error unmarshaling response: %v", err)
+		slog.Error("解析LLM响应失败", "error", err)
 		return ""
 	}
 
 	if len(responseData.Choices) == 0 {
-		log.Println("Error: Choices is empty")
+		slog.Warn("LLM响应为空", "choices_len", 0)
 		return ""
 	}
 
@@ -342,7 +342,7 @@ func ExtractTriplets(text string) ([][]string, string) {
 
 	// 生成唯一标识的uuid（使用当前时间戳 + UUID）
 	ID := fmt.Sprintf("%d-%s", time.Now().Unix(), uuid.New().String())
-	fmt.Println(ID)
+	slog.Info("三元组提取完成", "uuid", ID, "triplet_count", len(triplets))
 
 	return triplets, ID
 }
@@ -385,17 +385,17 @@ func saveToNeo4j(triplets [][]string, id string) {
 			"id":           id,
 		})
 		if err != nil {
-			log.Printf("Failed to run query for triple (%s,%s,%s): %v \n", headEntity, relationship, tailEntity, err)
+			slog.Error("三元组写入Neo4j失败", "head", headEntity, "relationship", relationship, "tail", tailEntity, "uuid", id, "error", err)
 			continue // 出错时继续处理下一个三元组
 		} else {
-			fmt.Printf("Inserted triple (%s,%s,%s) \n", headEntity, relationship, tailEntity)
+			slog.Debug("三元组写入成功", "head", headEntity, "relationship", relationship, "tail", tailEntity)
 		}
 
 		// RAG加强：判定并保存高价值关系向量（embedding不可用时自动降级跳过）
 		rag.SaveIfHighValue(driver, headEntity, relationship, tailEntity, id)
 	}
 
-	fmt.Printf("All %d triplets have been processed.", len(triplets))
+	slog.Info("三元组全部处理完成", "count", len(triplets), "uuid", id)
 }
 
 type Node struct {
@@ -446,9 +446,9 @@ func displayGraph(uuid string) (string, error) {
 		"uuid": uuid, // 使用传入的 UUID
 	})
 	if err != nil {
-		log.Printf("Failed to run query: %v \n", err)
+		slog.Error("图谱查询失败", "uuid", uuid, "error", err)
 	} else {
-		fmt.Println("查询成功！")
+		slog.Debug("图谱查询成功", "uuid", uuid)
 	}
 
 	// 处理result格式
@@ -525,7 +525,7 @@ func saveGraph(uuid string) {
 		UUID:  uuid,
 	}).Error
 	if err != nil {
-		fmt.Println("图谱保存失败！", err)
+		slog.Error("图谱保存到数据库失败", "uuid", uuid, "title", title, "error", err)
 		return
 	}
 	return
@@ -626,7 +626,7 @@ func (ModelApi) DeleteGraph(c *gin.Context) {
 		"uuid": cr.UUID, // 使用传入的 UUID
 	})
 	if err != nil {
-		log.Printf("Failed to run query: %v \n", err)
+		slog.Error("删除图谱节点失败", "uuid", cr.UUID, "error", err)
 	} else {
 		res.OkWithMessage(fmt.Sprint("删除图谱节点成功"), c)
 	}
@@ -636,7 +636,7 @@ func (ModelApi) DeleteGraph(c *gin.Context) {
 	var graph models.GraphModel
 	count := mysql.Debug().Select("uuid").Find(&graph, cr.UUID).RowsAffected
 	if count == 0 {
-		fmt.Println("没有找到该图谱")
+		slog.Warn("未找到待删除的图谱", "uuid", cr.UUID)
 		return
 	}
 	global.Mysql.Delete(&graph)
@@ -644,10 +644,39 @@ func (ModelApi) DeleteGraph(c *gin.Context) {
 
 }
 
+// getProjectRoot 返回项目根目录（包含 go.mod 的目录）
+// 从当前工作目录逐级向上查找，确保无论从何处启动服务都能定位到项目根
+func getProjectRoot() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
 // GetPdf 接收前端传递过来的pdf并且传递给大模型识别
 func (ModelApi) GetPdf(c *gin.Context) {
-	// upload 保存文件路径
-	upload := "C:/Users/xieenping/Desktop/实习工作/SSE/utils/"
+	// upload 保存文件路径：项目根目录下的 resource/doc 文件夹
+	root := getProjectRoot()
+	upload := filepath.Join(root, "resource", "doc")
+
+	// 若文件夹不存在则自动创建
+	if err := os.MkdirAll(upload, os.ModePerm); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "创建上传目录失败",
+		})
+		return
+	}
+
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -663,22 +692,25 @@ func (ModelApi) GetPdf(c *gin.Context) {
 		})
 		return
 	}
-	fmt.Println(file.Filename)
+	slog.Info("接收到PDF上传", "filename", file.Filename)
 
 	// 拼接目标文件路径
 	savePath := filepath.Join(upload, file.Filename)
 
 	// 保存文件到指定目录
 	if err := c.SaveUploadedFile(file, savePath); err != nil {
-		fmt.Println("文件保存失败")
+		slog.Error("保存上传文件失败", "filename", file.Filename, "save_path", savePath, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "文件保存失败",
+		})
 		return
 	}
 
 	// 调用python代码识别pdf文本
-	cmd := exec.Command("python", "C:/Users/xieenping/Desktop/实习工作/SSE/utils/ocr.py", file.Filename)
+	cmd := exec.Command("python", filepath.Join(root, "utils", "ocr.py"), file.Filename)
 	title, err := cmd.Output()
 	if err != nil {
-		fmt.Println("解析文本失败")
+		slog.Error("OCR解析PDF文本失败", "filename", file.Filename, "error", err)
 	}
 	// fmt.Println(string(title))
 
@@ -687,7 +719,7 @@ func (ModelApi) GetPdf(c *gin.Context) {
 
 	// 利用go多线程进行大语言模型调用逻辑
 	// 创建一个 slice 存储返回的结果
-	fmt.Printf("文本被拆解成 %d 块 \n", len(parts))
+	slog.Info("PDF文本已拆解", "chunk_count", len(parts))
 	results := make([]string, len(parts))
 	ch := make(chan struct{}, 5) // 生成一个线程池
 
@@ -735,7 +767,7 @@ func (ModelApi) GetPdf(c *gin.Context) {
 	// 删除本地pdf
 	err = os.Remove(savePath)
 	if err != nil {
-		fmt.Printf("文件删除失败: %v \n", err)
+		slog.Warn("删除临时PDF失败", "save_path", savePath, "error", err)
 	}
 
 	// res.OkWithMessage(text, c)

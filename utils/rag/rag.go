@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -71,7 +71,7 @@ func ensureIndex(driver neo4j.Driver) {
 	}
 	// 创建失败不置位，下次调用可重试
 	if err := vector.EnsureVectorIndex(driver); err != nil {
-		log.Printf("创建向量索引失败: %v", err)
+		slog.Warn("创建向量索引失败", "error", err)
 		return
 	}
 	indexEnsured = true
@@ -84,14 +84,14 @@ func BuildRAGContext(driver neo4j.Driver, content string) string {
 	// 生成文本向量
 	vec, err := embedding.Embed(content)
 	if err != nil {
-		log.Printf("生成embedding失败，降级为普通抽取: %v", err)
+		slog.Warn("生成embedding失败，降级为普通抽取", "error", err)
 		return ""
 	}
 
 	// 向量相似度检索相似高价值关系（阈值与数量可配置）
 	similar, err := vector.SearchSimilar(driver, vec, topK(), threshold())
 	if err != nil {
-		log.Printf("向量检索失败，降级为普通抽取: %v", err)
+		slog.Warn("向量检索失败，降级为普通抽取", "error", err)
 		return ""
 	}
 	if len(similar) == 0 {
@@ -116,14 +116,14 @@ func SaveIfHighValue(driver neo4j.Driver, head, rel, tail, uuid string) {
 	// 生成三元组向量
 	vec, err := embedding.Embed(text)
 	if err != nil {
-		log.Printf("生成embedding失败，跳过向量写入: %v", err)
+		slog.Warn("生成embedding失败，跳过向量写入", "error", err)
 		return
 	}
 
 	// 检查库中是否已有相似度较高的关系（阈值可配置），有则不重复写入
 	similar, err := vector.SearchSimilar(driver, vec, 1, threshold())
 	if err != nil {
-		log.Printf("向量检索失败，跳过向量写入: %v", err)
+		slog.Warn("向量检索失败，跳过向量写入", "error", err)
 		return
 	}
 	if len(similar) > 0 {
@@ -137,9 +137,9 @@ func SaveIfHighValue(driver neo4j.Driver, head, rel, tail, uuid string) {
 
 	// 写入高价值三元组及向量
 	if err := vector.SaveTriplet(driver, text, uuid, vec); err != nil {
-		log.Printf("保存三元组向量失败 (%s,%s,%s): %v", head, rel, tail, err)
+		slog.Error("保存三元组向量失败", "head", head, "relationship", rel, "tail", tail, "error", err)
 	} else {
-		fmt.Printf("已保存高价值关系向量 (%s,%s,%s) \n", head, rel, tail)
+		slog.Debug("已保存高价值关系向量", "head", head, "relationship", rel, "tail", tail)
 	}
 }
 
@@ -160,14 +160,14 @@ func isHighValueRelation(head, rel, tail string) bool {
 	}
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("构造判定请求失败: %v", err)
+		slog.Error("构造判定请求失败", "error", err)
 		return false
 	}
 
 	// 创建HTTP请求
 	req, err := http.NewRequest("POST", judgeURL, bytes.NewBuffer(jsonPayload))
 	if err != nil {
-		log.Printf("创建判定请求失败: %v", err)
+		slog.Error("创建判定请求失败", "error", err)
 		return false
 	}
 	req.Header.Set("Authorization", "Bearer "+judgeAPIKey())
@@ -177,7 +177,7 @@ func isHighValueRelation(head, rel, tail string) bool {
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("调用LLM判定失败: %v", err)
+		slog.Error("调用LLM判定失败", "error", err)
 		return false
 	}
 	defer resp.Body.Close()
@@ -185,7 +185,7 @@ func isHighValueRelation(head, rel, tail string) bool {
 	// 读取响应体
 	responseBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("读取判定响应失败: %v", err)
+		slog.Error("读取判定响应失败", "error", err)
 		return false
 	}
 
@@ -198,7 +198,7 @@ func isHighValueRelation(head, rel, tail string) bool {
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(responseBody, &responseData); err != nil {
-		log.Printf("解析判定响应失败: %v", err)
+		slog.Error("解析判定响应失败", "error", err)
 		return false
 	}
 	if len(responseData.Choices) == 0 {

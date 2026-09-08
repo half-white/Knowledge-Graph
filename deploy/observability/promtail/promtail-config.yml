@@ -1,0 +1,33 @@
+# Promtail 采集配置
+# SSE 服务把 JSON 日志写入宿主机 <项目根>/logs/sse-*.jsonl，
+# compose 中将该目录挂载到容器 /var/log/sse，这里按天轮转的命名规则
+# 通配采集并推送给 Loki。
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  # 记录采集进度，防止容器重启后重复推送
+  filename: /promtail/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: sse
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: sse
+          __path__: /var/log/sse/*.jsonl
+    # 日志本身是 slog JSON，这里把常用字段解析为结构化 metadata（保留原文便于LogQL全文检索）
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            msg: msg
+            time: time
+      - labels:
+          level:

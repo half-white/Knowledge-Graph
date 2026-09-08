@@ -15,7 +15,7 @@
               <a-input type="text" v-model:value="title" id="title" placeholder="输入文本" required/>
             </a-space>
             <!-- <input type="text" v-model="title" id="title" placeholder="输入文本" required> -->
-            <a-button type="primary" @click="sendTitleToBackend" :disabled="!title">输入</a-button>
+            <a-button type="primary" @click="sendTitleToBackend" :disabled="!title" :loading="loading">输入</a-button>
           </div>
 
           <!-- 上传文件 -->
@@ -30,12 +30,18 @@
             </a-upload> -->
             <label for="fileUpload">上传文件:</label>
             <input type="file" @change="handleFileUpload" id="fileUpload" required>
-            <a-button type="primary" @click="submitFile" :disabled="!file">上传</a-button>
+            <a-button type="primary" @click="submitFile" :disabled="!file" :loading="loading">上传</a-button>
           </div>
         
           <!-- 错误信息 -->
           <div v-if="errorMessage">
             <p style="color: red;">{{ errorMessage }}</p>
+          </div>
+
+          <!-- 加载遮罩：构建知识图谱时的等待效果 -->
+          <div v-if="loading" class="loading-overlay">
+            <a-spin size="large" />
+            <p class="loading-text">正在构建知识图谱，请稍候...</p>
           </div>
 
           <!-- 图谱展示 -->
@@ -68,6 +74,7 @@ const file = ref(null);
 const responseText = ref("");
 const errorMessage = ref("");
 const graphdata = ref("");
+const loading = ref(false); // 加载状态：构建知识图谱时显示转圈
 let myChart = null;
 
 // 初始化图表
@@ -78,6 +85,7 @@ onMounted(() => {
 
 // 通过输入文本获取知识图谱
 const sendTitleToBackend = async () => {
+  loading.value = true; // 显示加载转圈
   try {
     const response = await axios.post("http://127.0.0.1:8080/api/model", { title: title.value });
     responseText.value = response.data.msg;
@@ -86,6 +94,8 @@ const sendTitleToBackend = async () => {
     renderChart();
   } catch (error) {
     handleError(error);
+  } finally {
+    loading.value = false; // 请求结束隐藏转圈
   }
 };
 
@@ -109,6 +119,7 @@ const submitFile = async () => {
   const formData = new FormData();
   formData.append("file", file.value);
 
+  loading.value = true; // 显示加载转圈
   try {
     const response = await axios.post("http://127.0.0.1:8080/api/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
@@ -119,6 +130,8 @@ const submitFile = async () => {
     renderChart();
   } catch (error) {
     handleError(error);
+  } finally {
+    loading.value = false; // 请求结束隐藏转圈
   }
 };
 
@@ -255,5 +268,27 @@ const handleError = (error) => {
   button {
     padding: 10px 20px;
     font-size: 16px;
+  }
+
+  /* 加载遮罩：半透明背景 + 居中转圈 + 提示文字 */
+  .loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.7);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .loading-text {
+    font-size: 16px;
+    color: #666;
+    margin: 0;
   }
   </style>

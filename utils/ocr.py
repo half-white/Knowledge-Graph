@@ -28,7 +28,10 @@ def GetWord(pdf_path):
     # 例如`ch`, `en`, `fr`, `german`, `korean`, `japan`
     # 识别页码代码
     # pdf_path = '1.pdf'
-    pdf_path = 'C:/Users/xieenping/Desktop/实习工作/SSE/utils/'+ pdf_path
+    # 读取项目根目录下 resource/doc 文件夹中的 PDF 文件
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    doc_dir = os.path.join(project_root, "resource", "doc")
+    pdf_path = os.path.join(doc_dir, pdf_path)
     pdf = PdfDocument(pdf_path)
     PAGE_NUM = pdf.Pages.Count # 将识别页码前置作为全局，防止后续打开pdf的参数和前文识别参数不一致 / Set the recognition page number
 

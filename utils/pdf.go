@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"fmt"
+	"log/slog"
 
 	"github.com/ledongthuc/pdf"
 )
@@ -24,19 +24,11 @@ func readPdf(path string) (string, error) {
 
 		rows, _ := p.GetTextByRow()
 		for _, row := range rows {
-			println(">>>> row: ", row.Position)
+			slog.Debug("PDF行", "position", row.Position)
 			for _, word := range row.Content {
-				fmt.Println(word.S)
+				slog.Debug("PDF词", "content", word.S)
 			}
 		}
 	}
 	return "", nil
 }
-
-// func main() {
-// 	filePath := "1.pdf"
-// 	fmt.Println("Trying to open PDF file at:", filePath)
-
-// 	str, err := readPdf(filePath)
-// 	fmt.Println(str, err)
-// }
