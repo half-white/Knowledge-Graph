@@ -42,8 +42,9 @@ pipeline {
     stages {
         stage('检出') {
             steps {
-                // 每次从零开始，保证与远端 main 完全一致
-                deleteDir()
+                // 使用 job SCM 自带的 CleanBeforeCheckout：仅清空内容、不删除
+                // 工作区根目录（/Users/xieenping/work/kg-ci 挂在宿主机目录上，
+                // 其父目录属主非 jenkins，deleteDir 会因删除根目录而 EPERM）
                 checkout scm
                 sh 'echo "构建版本: $(git rev-parse --short HEAD) @ $(git log -1 --format=%cs)"'
             }
@@ -93,7 +94,9 @@ pipeline {
 
     post {
         always {
-            echo "流水线结束：结果 \${currentBuild.result ?: 'SUCCESS'}"
+            script {
+                echo "流水线结束：结果 ${currentBuild.result ?: 'SUCCESS'}"
+            }
         }
     }
 }
