@@ -303,7 +303,11 @@ func TypeInModel(content string) string {
 
 	// 发送请求并获取响应
 	client := &http.Client{}
-	resp, _ := client.Do(req)
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Error("调用LLM接口失败", "url", url, "error", err)
+		return ""
+	}
 	defer resp.Body.Close()
 
 	// 读取响应体

@@ -1,0 +1,22 @@
+# ---- 版本控制 / 编辑器 ----
+.git
+.gitignore
+docs/
+.vscode/
+.DS_Store
+
+# ---- 本地构建产物（不应进镜像） ----
+SSE
+SSE.exe
+*.exe
+output.txt
+
+# ---- 运行期数据 ----
+logs/
+
+# ---- 前端依赖/产物（后端镜像构建时不需要 node_modules 进上下文） ----
+**/node_modules
+vue/sse/dist
+
+# ---- 部署辅助 ----
+deploy/jenkins/jenkins_home/

@@ -7,6 +7,7 @@ import (
 	"SSE/logger"
 	"SSE/router"
 	"log/slog"
+	"os"
 )
 
 func main() {
@@ -27,7 +28,12 @@ func main() {
 	//路由配置
 	router := router.InitRouter()
 
-	addr := "127.0.0.1:8080"
+	// 监听地址可用环境变量 SSE_ADDR 覆盖（默认 127.0.0.1:8080；
+	// Docker 容器内需监听全部网卡，例如 SSE_ADDR=:8080）
+	addr := os.Getenv("SSE_ADDR")
+	if addr == "" {
+		addr = "127.0.0.1:8080"
+	}
 	slog.Info("一键生成知识图谱服务运行", "addr", addr)
 	if err := router.Run(addr); err != nil {
 		slog.Error("服务启动失败", "error", err)

@@ -1,0 +1,82 @@
+# ============================================================
+# SSE 知识图谱应用栈（docker compose 托管）
+#
+# 组成：
+#   backend   Go 后端服务        宿主 8080 -> 容器 8080
+#   web       前端(nginx 静态资源) 宿主 8090 -> 容器 80，/api 代理到 backend
+#
+# 数据库（Neo4j:7687、MySQL/MariaDB:3306）为独立运行的容器/服务，
+# 后端通过环境变量访问；默认指向 host.docker.internal 上已发布到宿主端口
+# 的数据库，与本地已有的 neo4j / kg-mysql 容器开箱即用。
+#
+# 常用命令（仓库根目录）：
+#   docker compose -f deploy/sse-app/docker-compose.yml up -d --build
+#   docker compose -f deploy/sse-app/docker-compose.yml down
+#   docker compose -f deploy/sse-app/docker-compose.yml logs -f backend
+#
+# 可用环境变量（支持通过同目录 .env 或 shell 导出注入）：
+#   SSE_LOG_HOST_DIR   宿主机日志目录（默认部署目录 ../../logs，即“项目根/logs”，
+#                      Promtail 正是采集该目录，保证日志面板不中断）
+#   SSE_IMAGE_TAG      镜像 tag（默认 latest）
+#   其余见 backend 服务 environment 段，如 SSE_NEO4J_URI、SSE_MYSQL_DSN、
+#   GLM_API_KEY、BAIDU_CLIENT_ID/SECRET 等。
+# ============================================================
+
+name: sse
+
+services:
+  backend:
+    build:
+      context: ../..
+      dockerfile: deploy/sse-app/backend/Dockerfile
+    image: sse/backend:${SSE_IMAGE_TAG:-latest}
+    container_name: sse-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SSE_ADDR: ":8080"
+      # 容器通过 host.docker.internal 访问宿主上已发布的数据库端口
+      SSE_NEO4J_URI: ${SSE_NEO4J_URI:-bolt://host.docker.internal:7687}
+      SSE_NEO4J_USER: ${SSE_NEO4J_USER:-neo4j}
+      SSE_NEO4J_PASSWORD: ${SSE_NEO4J_PASSWORD:-neo4j}
+      SSE_MYSQL_DSN: "${SSE_MYSQL_DSN:-root:root@tcp(host.docker.internal:3306)/knowledge_graph?charset=utf8mb4&parseTime=True&loc=Local}"
+      # 日志：容器写 /logs，compose 挂载到宿主机日志目录（供 Promtail 采集）
+      SSE_LOG_DIR: /logs
+      SSE_LOG_CONSOLE: "true"
+      SSE_LOG_FILE: "true"
+      SSE_LOG_LEVEL: ${SSE_LOG_LEVEL:-info}
+      # 大模型/检索相关密钥（默认留空；宿主机原生运行也靠这些变量注入）
+      GLM_API_KEY: ${GLM_API_KEY:-}
+      BAIDU_CLIENT_ID: ${BAIDU_CLIENT_ID:-}
+      BAIDU_CLIENT_SECRET: ${BAIDU_CLIENT_SECRET:-}
+      RAG_THRESHOLD: ${RAG_THRESHOLD:-}
+      RAG_TOP_K: ${RAG_TOP_K:-}
+    extra_hosts:
+      # 便于 Docker Desktop / Linux 统一解析宿主地址
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - sse-uploads:/app/resource/doc          # PDF 上传目录持久化
+      - ${SSE_LOG_HOST_DIR:-../../logs}:/logs  # 日志落到宿主机（供 Promtail）
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 2 -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/sse-app/web/Dockerfile
+    image: sse/web:${SSE_IMAGE_TAG:-latest}
+    container_name: sse-web
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  sse-uploads:

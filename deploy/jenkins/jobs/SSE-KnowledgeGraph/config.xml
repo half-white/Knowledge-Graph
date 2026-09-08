@@ -1,0 +1,49 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<!--
+  SSE 知识图谱项目 CI/CD 流水线 Job（预置模板）
+  由 deploy/jenkins/setup-jenkins.sh 在首次启动前写入
+  jenkins_home/jobs/SSE-KnowledgeGraph/config.xml。
+  逻辑全部在仓库根 Jenkinsfile 中定义，这里只负责：
+    1) 从 GitHub HTTPS 拉取 main 分支（public 仓库，无需凭据）
+    2) 每 2 分钟轮询远端是否有新提交，有则自动触发构建
+    3) 通过 <scriptPath>Jenkinsfile</scriptPath> 指向流水线脚本
+-->
+<flow-definition plugin="workflow-job">
+  <actions/>
+  <description>SSE 知识图谱服务 CI/CD（构建→测试→镜像→docker compose 部署）</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <org.jenkinsci.plugins.workflow.job.properties.PipelineTriggersJobProperty>
+      <triggers>
+        <hudson.triggers.SCMTrigger>
+          <spec>H/2 * * * *</spec>
+          <ignorePostCommitHooks>false</ignorePostCommitHooks>
+        </hudson.triggers.SCMTrigger>
+      </triggers>
+    </org.jenkinsci.plugins.workflow.job.properties.PipelineTriggersJobProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition" plugin="workflow-cps">
+    <scm class="hudson.plugins.git.GitSCM" plugin="git">
+      <configVersion>2</configVersion>
+      <userRemoteConfigs>
+        <hudson.plugins.git.UserRemoteConfig>
+          <url>https://github.com/half-white/Knowledge-Graph.git</url>
+        </hudson.plugins.git.UserRemoteConfig>
+      </userRemoteConfigs>
+      <branches>
+        <hudson.plugins.git.BranchSpec>
+          <name>*/main</name>
+        </hudson.plugins.git.BranchSpec>
+      </branches>
+      <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+      <submoduleCfg class="empty-list"/>
+      <extensions>
+        <hudson.plugins.git.extensions.impl.CleanBeforeCheckout/>
+      </extensions>
+    </scm>
+    <scriptPath>Jenkinsfile</scriptPath>
+    <lightweight>true</lightweight>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>

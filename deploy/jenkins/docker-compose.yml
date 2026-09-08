@@ -1,0 +1,50 @@
+# ============================================================
+# Jenkins（Docker 托管）— SSE 项目 CI/CD 控制节点
+#
+# 关键设计：
+#   * jenkins_home 命名卷：保留你原有账号/插件/任务数据（一次性迁移见 setup-jenkins.sh）
+#   * 挂载 /var/run/docker.sock：流水线驱动“宿主”Docker（构建/部署）
+#     - 容器内 socket 属主为 root:root 660，故给 jenkins 用户补 root 组(group 0)，
+#       使其可以读写 socket，而无需整个容器以 root 运行
+#   * group_add 0 + group_add 数字组仅在启动时叠加到进程组，不改动镜像
+#
+# 端口：
+#   55000 -> 8080  Jenkins Web UI（沿用原有端口）
+#   55001 -> 50000  agent 连接端口
+#
+# 用法：
+#   ./setup-jenkins.sh   （首次：迁移数据卷 + 预置 job + 启动）
+#   docker compose -f deploy/jenkins/docker-compose.yml down/up -d
+# ============================================================
+
+name: sse-jenkins
+
+services:
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sse/jenkins:local
+    container_name: jenkins
+    restart: unless-stopped
+    ports:
+      - "55000:8080"
+      - "55001:50000"
+    group_add:
+      - "0"
+    environment:
+      TZ: Asia/Shanghai
+      # 方便识别流水线在跑哪个项目
+      JENKINS_OPTS: --sessionTimeout=240
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      # 宿主 docker daemon（DooD：docker-outside-of-docker）
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 流水线工作区与宿主共享同一绝对路径，使宿主机 Docker
+      # 能以一致的路径完成构建上下文与 docker compose 部署
+      - /Users/xieenping/work/kg-ci:/Users/xieenping/work/kg-ci
+
+volumes:
+  # 与旧容器匿名卷同源的命名卷（由 setup-jenkins.sh 负责迁移）
+  jenkins_home:
+    external: true

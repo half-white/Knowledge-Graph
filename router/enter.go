@@ -30,6 +30,11 @@ func InitRouter() *gin.Engine {
 	// 结构化访问日志（输出到全局 slog）
 	router.Use(RequestLogger())
 
+	// 健康检查端点（供容器 healthcheck / CI 探测；返回 200）
+	router.GET("/healthz", func(c *gin.Context) {
+		c.String(200, "ok")
+	})
+
 	// // 路由:渲染首页
 	// router.GET("/", func(c *gin.Context) {
 	// 	c.HTML(http.StatusOK, "index.html", gin.H{
