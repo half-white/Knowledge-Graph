@@ -14,6 +14,10 @@ output.txt
 # ---- 运行期数据 ----
 logs/
 
+# 本地运行配置（可能含密钥，容器内配置一律由 compose 环境变量注入；
+# 入库模板 config.example.yml 不受影响，可进镜像）
+config/config.yml
+
 # ---- 前端依赖/产物（后端镜像构建时不需要 node_modules 进上下文） ----
 **/node_modules
 vue/sse/dist

@@ -16,3 +16,9 @@ C:/
 
 # 编辑器本地配置（调试配置保留在本地，不入库）
 /.vscode/
+
+# 本地项目配置（config.example.yml 为入库模板；config.yml 含运行配置/密钥，不入库）
+config/config.yml
+
+# ./.cursor/ 目录
+/.cursor/

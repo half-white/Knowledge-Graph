@@ -1,6 +1,7 @@
 package main
 
 import (
+	"SSE/config"
 	"SSE/database"
 	"SSE/flag"
 	"SSE/global"
@@ -11,6 +12,9 @@ import (
 )
 
 func main() {
+	// 加载项目配置（config/config.yml，须在任何日志/数据库/密钥读取之前调用）
+	config.Load()
+
 	//初始化日志系统（必须在任何日志输出之前调用）
 	logger.Init()
 

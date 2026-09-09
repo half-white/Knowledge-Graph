@@ -100,7 +100,7 @@ func get_access_token() string {
 	rawURL := "https://aip.baidubce.com/oauth/2.0/token"
 	params := url.Values{}
 	params.Add("grant_type", "client_credentials")
-	params.Add("client_id", os.Getenv("BAIDU_CLIENT_ID"))             // 环境变量BAIDU_CLIENT_ID
+	params.Add("client_id", os.Getenv("BAIDU_CLIENT_ID"))         // 环境变量BAIDU_CLIENT_ID
 	params.Add("client_secret", os.Getenv("BAIDU_CLIENT_SECRET")) // 环境变量BAIDU_CLIENT_SECRET
 	encodedParams := params.Encode()
 	fullURL := rawURL + "?" + encodedParams
@@ -108,7 +108,7 @@ func get_access_token() string {
 	// 创建HTTP请求
 	resp, err := http.Get(fullURL)
 	if err != nil {
-		slog.Error("获取文心一言token请求失败", "error", err)
+		slog.Error("获取llm token请求失败", "error", err)
 		return "error"
 	}
 	defer resp.Body.Close()
