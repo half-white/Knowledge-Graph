@@ -283,7 +283,7 @@ func TypeInModel(content string) string {
 	url := "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
 	payload := map[string]interface{}{
-		"model": "glm-4-flash",
+		"model": "glm-4.7-flash",
 		"messages": []map[string]interface{}{
 			{
 				"role":    "user",
