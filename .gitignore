@@ -20,5 +20,12 @@ C:/
 # 本地项目配置（config.example.yml 为入库模板；config.yml 含运行配置/密钥，不入库）
 config/config.yml
 
+# 部署密钥与环境变量（.env.example 模板入库，.env 真实值不入库）
+.env
+**/.env
+
+# Jenkins 数据卷（若落在工作区内，含账号/凭据，绝不入库）
+deploy/jenkins/jenkins_home/
+
 # ./.cursor/ 目录
 /.cursor/

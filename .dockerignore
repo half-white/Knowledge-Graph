@@ -20,7 +20,7 @@ config/config.yml
 
 # ---- 前端依赖/产物（后端镜像构建时不需要 node_modules 进上下文） ----
 **/node_modules
-vue/sse/dist
+frontend/dist
 
 # ---- 部署辅助 ----
 deploy/jenkins/jenkins_home/

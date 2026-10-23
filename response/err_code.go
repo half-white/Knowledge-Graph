@@ -1,4 +1,4 @@
-package res
+package response
 
 type ErrorCode int
 

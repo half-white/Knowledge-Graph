@@ -1,0 +1,21 @@
+# ============================================================
+# 生产环境 / VPS 部署覆盖文件
+#
+# 与主 compose 文件配合使用：
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# 与默认（本地开发）配置的差异：
+#   1. web 发布到 80 端口（公网唯一入口，/api 由 nginx 代理到 backend）
+#   2. backend 只绑定 127.0.0.1，仅供宿主机调试，不对公网暴露
+#   3. Neo4j / MySQL / Grafana 等不在本 compose 内，生产环境
+#      切勿将其端口发布到 0.0.0.0（建议绑定 127.0.0.1 或不发布）
+# ============================================================
+
+services:
+  backend:
+    ports: !override
+      - "127.0.0.1:8080:8080"
+
+  web:
+    ports: !override
+      - "80:80"

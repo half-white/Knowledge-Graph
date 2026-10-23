@@ -4,7 +4,7 @@ import (
 	"SSE/common"
 	"SSE/global"
 	"SSE/models"
-	"SSE/res"
+	"SSE/response"
 	"SSE/utils/rag"
 	"bytes"
 	"encoding/json"
@@ -37,7 +37,7 @@ func (ModelApi) UseModel(c *gin.Context) {
 	var cr UseModelRequest
 	err := c.ShouldBindJSON(&cr)
 	if err != nil {
-		res.FailWithError(err, &cr, c)
+		response.FailWithError(err, &cr, c)
 		return
 	}
 	// 将文本拆解为较短片段
@@ -90,8 +90,8 @@ func (ModelApi) UseModel(c *gin.Context) {
 	// 自动保留每次生成的知识图谱，以便管理
 	saveGraph(uuid)
 
-	// res.OkWithMessage(text, c)
-	res.Ok(result, text, c)
+	// response.OkWithMessage(text, c)
+	response.Ok(result, text, c)
 }
 
 // 获取文心一言大模型token（凭据从环境变量读取，避免硬编码）
@@ -272,18 +272,40 @@ func TypeInModel(content string) string {
 
 	// GLM4 http调用逻辑（API密钥从环境变量读取，避免硬编码）
 	apiKey := os.Getenv("GLM_API_KEY")
-	prompt := "以下是需要处理的文本内容，请筛选出其中你认为最重要的知识点,将有用的知识点转化成三元组,按照'主','谓','宾'的格式(没有则依据上下文补全),全部严格输出成（头实体，关系，尾实体）的格式，只输出最重要的8个三元组,一个一行,不要包含序号和任何其它文字,输出前请严格遵守要求。 \n"
+	prompt := `你是知识图谱构建专家。请从下面的文本中抽取知识三元组。
 
-	// RAG检索加强：检索图谱中相似的高价值关系作为参考上下文（失败自动降级为空串）
-	ragContext := rag.BuildRAGContext(global.DB, content)
-	if ragContext != "" {
-		prompt = ragContext + "\n" + prompt
+抽取规则：
+1. 只抽取事实性知识点，忽略问候、评论、过渡句等非事实内容；
+2. 头实体和尾实体使用文本中的规范名称，遇到代词（如"他"、"该公司"）必须还原为所指的具体实体；
+3. 同一实体在不同句子中出现时使用完全相同的名称，不要有时写全称有时写简称；
+4. 关系用一个简短的词或短语概括（如"创始人"、"位于"、"提出"）；
+5. 实体和关系的名称中不要包含逗号；
+6. 最多输出8个最重要的三元组，不足8个则有多少输出多少。
+
+输出格式（严格遵守，每行一个，不要序号和任何其他文字）：
+（头实体，关系，尾实体）
+
+示例：
+输入：乔布斯于1976年创立了苹果公司，该公司后来发布了风靡全球的iPhone。
+输出：
+（乔布斯，创立，苹果公司）
+（苹果公司，发布，iPhone）
+
+以下是需要处理的文本内容：
+`
+
+	// RAG向量检索已移除：长文本与精简三元组的向量相似度对比意义不大，
+	// 改为通过提示词工程提升抽取质量（实体规范化、few-shot示例等）
+
+	model := os.Getenv("GLM_MODEL")
+	if model == "" {
+		model = "glm-4-flash" // 当前唯一免费可用；如需切换在 .env 配 GLM_MODEL
 	}
 
 	url := "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
 	payload := map[string]interface{}{
-		"model": "glm-4.7-flash",
+		"model": model,
 		"messages": []map[string]interface{}{
 			{
 				"role":    "user",
@@ -566,7 +588,7 @@ func (ModelApi) GraphList(c *gin.Context) {
 	var cr models.PageInfo
 	err := c.ShouldBindJSON(&cr)
 	if err != nil {
-		res.FailWithCode(res.ArgumentError, c)
+		response.FailWithCode(response.ArgumentError, c)
 		return
 	}
 
@@ -575,11 +597,11 @@ func (ModelApi) GraphList(c *gin.Context) {
 		Debug:    true,
 	})
 	if err != nil {
-		res.FailWithMessage("查询图谱失败！", c)
+		response.FailWithMessage("查询图谱失败！", c)
 		return
 	}
 
-	res.OkWithList(list, count, c)
+	response.OkWithList(list, count, c)
 
 	return
 }
@@ -590,14 +612,14 @@ func (ModelApi) DisplayGraph(c *gin.Context) {
 	var cr models.QueryRequest
 	err := c.ShouldBindJSON(&cr)
 	if err != nil {
-		res.FailWithCode(res.ArgumentError, c)
+		response.FailWithCode(response.ArgumentError, c)
 		return
 	}
 
 	result, _ := displayGraph(cr.UUID)
 
 	// 将图谱json数据传递给前端
-	res.Ok(result, "", c)
+	response.Ok(result, "", c)
 }
 
 // DeleteGraph 删除知识图谱逻辑
@@ -605,7 +627,7 @@ func (ModelApi) DeleteGraph(c *gin.Context) {
 	var cr models.RemoveRequest
 	err := c.ShouldBindJSON(&cr)
 	if err != nil {
-		res.FailWithCode(res.ArgumentError, c)
+		response.FailWithCode(response.ArgumentError, c)
 		return
 	}
 
@@ -632,7 +654,7 @@ func (ModelApi) DeleteGraph(c *gin.Context) {
 	if err != nil {
 		slog.Error("删除图谱节点失败", "uuid", cr.UUID, "error", err)
 	} else {
-		res.OkWithMessage(fmt.Sprint("删除图谱节点成功"), c)
+		response.OkWithMessage(fmt.Sprint("删除图谱节点成功"), c)
 	}
 
 	// 依据uuid删除Mysql数据库信息
@@ -644,7 +666,7 @@ func (ModelApi) DeleteGraph(c *gin.Context) {
 		return
 	}
 	global.Mysql.Delete(&graph)
-	res.OkWithMessage(fmt.Sprint("删除图谱成功"), c)
+	response.OkWithMessage(fmt.Sprint("删除图谱成功"), c)
 
 }
 
@@ -774,8 +796,8 @@ func (ModelApi) GetPdf(c *gin.Context) {
 		slog.Warn("删除临时PDF失败", "save_path", savePath, "error", err)
 	}
 
-	// res.OkWithMessage(text, c)
-	res.Ok(result, text, c)
+	// response.OkWithMessage(text, c)
+	response.Ok(result, text, c)
 }
 
 // 保存三元组到 CSV 文件

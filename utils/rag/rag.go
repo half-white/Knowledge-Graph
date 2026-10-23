@@ -24,11 +24,19 @@ const (
 	DefaultThreshold = 0.75
 	// 默认检索返回的最大相似关系数量（可通过环境变量RAG_TOP_K覆盖）
 	DefaultTopK = 5
-	// 高价值关系判定使用的LLM模型
-	judgeModel = "glm-4.7-flash"
+	// 高价值关系判定默认使用的LLM模型（可通过环境变量GLM_MODEL覆盖，见 judgeModelName）
+	DefaultJudgeModel = "glm-4-flash"
 	// 高价值关系判定接口地址
 	judgeURL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 )
+
+// judgeModelName 读取判定用模型名（环境变量GLM_MODEL覆盖，与use_model.go共用同一变量）
+func judgeModelName() string {
+	if v := os.Getenv("GLM_MODEL"); v != "" {
+		return v
+	}
+	return DefaultJudgeModel
+}
 
 // judgeAPIKey 读取GLM API密钥（环境变量GLM_API_KEY，与use_model.go共用）
 func judgeAPIKey() string {
@@ -150,7 +158,7 @@ func isHighValueRelation(head, rel, tail string) bool {
 
 	// 构造请求数据
 	payload := map[string]interface{}{
-		"model": judgeModel,
+		"model": judgeModelName(),
 		"messages": []map[string]interface{}{
 			{
 				"role":    "user",

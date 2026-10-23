@@ -1,4 +1,4 @@
-package res
+package response
 
 import (
 	"net/http"
@@ -67,17 +67,17 @@ func FailWithMessage(msg string, c *gin.Context) {
 }
 
 func FailWithError(err error, obj any, c *gin.Context) {
-	msg := GetVaildMsg(err,obj)
-	FailWithMessage(msg,c)
+	msg := GetVaildMsg(err, obj)
+	FailWithMessage(msg, c)
 }
 
-func FailWithCode(code ErrorCode,c *gin.Context) {
-	msg,ok := ErrorMap[code]
+func FailWithCode(code ErrorCode, c *gin.Context) {
+	msg, ok := ErrorMap[code]
 	if ok {
-		Result(int(code),map[string]any{},msg,c)
+		Result(int(code), map[string]any{}, msg, c)
 		return
 	}
-	Result(Error,map[string]any{},msg,c)
+	Result(Error, map[string]any{}, msg, c)
 }
 
 func GetVaildMsg(err error, obj any) string {

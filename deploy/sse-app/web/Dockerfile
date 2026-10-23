@@ -10,10 +10,10 @@ FROM node:20-alpine AS build
 WORKDIR /build
 
 # 先拷贝 lock 文件，最大化 npm ci 缓存
-COPY vue/sse/package.json vue/sse/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-COPY vue/sse ./
+COPY frontend ./
 RUN npm run build
 
 # ---------- 运行阶段 ----------

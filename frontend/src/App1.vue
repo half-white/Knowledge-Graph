@@ -87,7 +87,7 @@ onMounted(() => {
 const sendTitleToBackend = async () => {
   loading.value = true; // 显示加载转圈
   try {
-    const response = await axios.post("http://127.0.0.1:8080/api/model", { title: title.value });
+    const response = await axios.post("/api/model", { title: title.value });
     responseText.value = response.data.msg;
     graphdata.value = response.data.data;
     errorMessage.value = "";
@@ -121,7 +121,7 @@ const submitFile = async () => {
 
   loading.value = true; // 显示加载转圈
   try {
-    const response = await axios.post("http://127.0.0.1:8080/api/upload", formData, {
+    const response = await axios.post("/api/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
     graphdata.value = response.data.data;

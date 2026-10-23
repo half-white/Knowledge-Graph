@@ -48,6 +48,7 @@ services:
       SSE_LOG_LEVEL: ${SSE_LOG_LEVEL:-info}
       # 大模型/检索相关密钥（默认留空；宿主机原生运行也靠这些变量注入）
       GLM_API_KEY: ${GLM_API_KEY:-}
+      GLM_MODEL: ${GLM_MODEL:-}
       BAIDU_CLIENT_ID: ${BAIDU_CLIENT_ID:-}
       BAIDU_CLIENT_SECRET: ${BAIDU_CLIENT_SECRET:-}
       RAG_THRESHOLD: ${RAG_THRESHOLD:-}

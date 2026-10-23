@@ -33,7 +33,7 @@ export default {
   methods: {
     async sendTitleToBackend() {
       try {
-        const response = await axios.post('http://127.0.0.1:8080/api/model', { title: this.title });
+        const response = await axios.post('/api/model', { title: this.title });
         this.responseText = response.data.msg; // 假设后端返回 { text: '...' }
         this.errorMessage = ''; // 清除任何先前的错误信息
       } catch (error) {
