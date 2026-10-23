@@ -11,7 +11,7 @@
 //   该目录以“相同绝对路径”同时挂载进 Jenkins 容器，因此宿主机 Docker
 //   （compose build 上下文、bind mount）看到的路径与 Jenkins 一致。
 //
-// 触发方式：Job 预置为每 2 分钟轮询 GitHub main（见 deploy/jenkins/jobs/...）
+// 触发方式：仅手动构建（Job 未配置任何自动触发器，见 deploy/jenkins/jobs/...）
 // ============================================================
 
 pipeline {

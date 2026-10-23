@@ -29,10 +29,10 @@ WORKDIR /app
 COPY --from=build /out/SSE /app/SSE
 # 供 getProjectRoot()/findProjectRoot() 定位项目根（以 go.mod 为锚点）
 COPY go.mod /app/go.mod
-# 运行期只读资源
-COPY resource /app/resource
 
-# 运行期可写目录（默认由 compose 用 volume 覆盖为持久化目录）
+# 运行期可写目录（默认由 compose 用 volume 覆盖为持久化目录）。
+# 注意：resource/ 不入库（git 不追踪空目录，上传文件属运行期数据），
+# 不能用 COPY resource 拷入，否则干净克隆的 CI 构建会因目录缺失而失败。
 RUN mkdir -p /app/logs /app/resource/doc
 
 # 默认容器化运行参数（数据库地址/监听地址均可被 compose 环境变量覆盖）

@@ -22,4 +22,11 @@ USER root
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 
+# 流水线工作区为宿主机同路径挂载 /Users/xieenping/work/kg-ci，而 durable-task 插件
+# 执行 sh 时会在其“同级”创建控制目录 /Users/xieenping/work/kg-ci@tmp。
+# 该父目录不随挂载进入容器（仅存在 root 属主的挂载点路径），若不预建并交给
+# jenkins 用户，流水线第一个 sh 步骤即抛 AccessDeniedException: kg-ci@tmp。
+USER root
+RUN mkdir -p /Users/xieenping/work && chown jenkins:jenkins /Users/xieenping/work
+
 USER jenkins
