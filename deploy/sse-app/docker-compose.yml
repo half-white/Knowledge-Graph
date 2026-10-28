@@ -53,6 +53,9 @@ services:
       BAIDU_CLIENT_SECRET: ${BAIDU_CLIENT_SECRET:-}
       RAG_THRESHOLD: ${RAG_THRESHOLD:-}
       RAG_TOP_K: ${RAG_TOP_K:-}
+      # RAG embedding 服务（本机 Ollama；容器经 host-gateway 访问宿主机端口）
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
     extra_hosts:
       # 便于 Docker Desktop / Linux 统一解析宿主地址
       - "host.docker.internal:host-gateway"
