@@ -92,7 +92,9 @@ func logDir() string {
 // 调用方（main）应在程序最早期调用；之后代码直接使用 slog.Info/Warn/Error 等。
 func Init() *slog.Logger {
 	level := levelFromEnv()
-	opts := &slog.HandlerOptions{Level: level}
+	// AddSource: 每条日志附带触发代码的 文件:行号（source 字段），
+	// 便于从 Grafana/控制台日志直接定位调用点
+	opts := &slog.HandlerOptions{Level: level, AddSource: true}
 
 	var handlers []slog.Handler
 

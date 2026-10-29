@@ -299,7 +299,7 @@ func TypeInModel(content string) string {
 
 	model := os.Getenv("GLM_MODEL")
 	if model == "" {
-		model = "glm-4-flash" // 当前唯一免费可用；如需切换在 .env 配 GLM_MODEL
+		model = "glm-4.7-flash" // 当前唯一免费可用；如需切换在 .env 配 GLM_MODEL
 	}
 
 	url := "https://open.bigmodel.cn/api/paas/v4/chat/completions"
