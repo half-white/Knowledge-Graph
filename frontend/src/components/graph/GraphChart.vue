@@ -139,13 +139,19 @@ function buildOption({ nodes, links, categories }) {
           label: { fontSize: 14, fontWeight: 700 },
         },
         force: {
-          repulsion: 500,
-          edgeLength: [20, 50],
+          // 拉大节点间距：默认值下相邻节点圆面相切，边线被完全遮盖（视觉验证发现）
+          repulsion: 800,
+          edgeLength: [80, 150],
           friction: 0.2,
-          gravity: 0.3,
+          gravity: 0.25,
         },
         draggable: true,
-        data: nodes,
+        // 节点按索引循环取多色：后端固定单分类（category 恒为 0），
+        // 分类取色机制下色板退化单色，改为索引分配保证节点间区分度
+        data: nodes.map((node, index) => ({
+          ...node,
+          itemStyle: { ...node.itemStyle, color: NODE_COLORS[index % NODE_COLORS.length] },
+        })),
         links: links,
         categories: categories,
       },
