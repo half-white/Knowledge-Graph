@@ -1,82 +1,32 @@
 <template>
-  <div id="app">
-    <h1>大模型拆解文本</h1>
-    <form @submit.prevent="sendTitleToBackend">
-      <div>
-        <label for="title">请输入文本:</label>
-        <input type="text" v-model="title" id="title" required>
-      </div>
-      <button type="submit">输入</button>
-    </form>
-    <div v-if="responseText">
-      <h2>文本拆解为：</h2>
-      <p style="color: black;">{{ responseText }}</p>
-    </div>
-    <div v-if="errorMessage">
-      <p style="color: red;">{{ errorMessage }}</p>
-    </div>
-  </div>
+  <!-- 根组件：antd 深色主题配置 + message 上下文 + 路由出口 -->
+  <a-config-provider :theme="themeConfig">
+    <a-app>
+      <router-view />
+    </a-app>
+  </a-config-provider>
 </template>
 
-<script>
-import axios from 'axios';
+<script setup>
+/**
+ * 应用根组件
+ * - ConfigProvider：darkAlgorithm 全局深色算法 + 科技风主题 token（与 theme.css 色板一致）
+ * - a-app：为 useApp() 提供 message 上下文（输入面板校验提示使用）
+ */
+import { theme } from 'ant-design-vue'
 
-export default {
-  name: 'App',
-  data() {
-    return {
-      title: '',
-      responseText: '',
-      errorMessage: '',
-    };
+// 主题 token：主色霓虹青，组件底色与 CSS 变量对齐
+const themeConfig = {
+  algorithm: theme.darkAlgorithm,
+  token: {
+    colorPrimary: '#00e5ff',
+    colorInfo: '#00e5ff',
+    colorBgBase: '#0a0f1e',
+    colorBgContainer: '#101830',
+    colorBgElevated: '#16213c',
+    colorBorder: 'rgba(0, 229, 255, 0.18)',
+    colorBorderSecondary: 'rgba(0, 229, 255, 0.12)',
+    borderRadius: 6,
   },
-  methods: {
-    async sendTitleToBackend() {
-      try {
-        const response = await axios.post('/api/model', { title: this.title });
-        this.responseText = response.data.msg; // 假设后端返回 { text: '...' }
-        this.errorMessage = ''; // 清除任何先前的错误信息
-      } catch (error) {
-        if (error.response) {
-          // 服务器响应了一个状态码，范围在2xx之外
-          this.errorMessage = `Error: ${error.response.status} ${error.response.statusText}`;
-        } else if (error.request) {
-          // 请求已经发出，但没有收到响应
-          this.errorMessage = 'Error: No response received from server.';
-        } else {
-          // 其他错误
-          this.errorMessage = `Error: ${error.message}`;
-        }
-        console.error('Error sending title to backend:', error);
-      }
-    },
-  }
-};
+}
 </script>
-
-<style>
-#app {
-  background-color: aliceblue;
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: black;
-  margin-top: 60px;
-}
-
-form {
-  margin-bottom: 20px;
-}
-
-input {
-  padding: 10px;
-  font-size: 16px;
-  margin-right: 10px;
-}
-
-button {
-  padding: 10px 20px;
-  font-size: 16px;
-}
-</style>

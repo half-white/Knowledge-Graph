@@ -1,0 +1,59 @@
+/**
+ * 科技感装饰图案（纯 CSS 实现，不引入动画库）
+ * 提供：网格背景、面板角框、光晕描边三种装饰类
+ * 使用原则：点缀即可，不制造大面积无关内容
+ */
+
+/* 网格背景：低透明度青色细线网格，铺在内容区底层 */
+.decorate-grid {
+  background-image:
+    linear-gradient(rgba(0, 229, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 255, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* 科技面板：半透明底 + 弱边框 + 圆角 */
+.decorate-panel {
+  position: relative;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-faint);
+  border-radius: 8px;
+}
+
+/* 面板角框：四角青色短线装饰（伪元素实现，无额外 DOM） */
+.decorate-panel::before,
+.decorate-panel::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+.decorate-panel::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid var(--border-glow);
+  border-left: 2px solid var(--border-glow);
+  border-top-left-radius: 8px;
+}
+.decorate-panel::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid var(--border-glow);
+  border-right: 2px solid var(--border-glow);
+  border-bottom-right-radius: 8px;
+}
+
+/* 光晕标题：主色文字 + 发光 */
+.decorate-title-glow {
+  color: var(--primary);
+  text-shadow: var(--glow-text);
+  letter-spacing: 2px;
+}
+
+/* 主色分隔线：头部/区块底部的青色渐变线 */
+.decorate-divider {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--primary), var(--accent), transparent);
+  opacity: 0.55;
+}

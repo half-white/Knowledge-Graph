@@ -1,0 +1,55 @@
+/**
+ * 深色科技风设计 token（CSS 变量）
+ * 色板基调：深蓝黑底 + 霓虹青主色 + 蓝色辅色
+ * 所有页面/组件的颜色均引用变量，保证风格统一
+ */
+:root {
+  /* 背景层 */
+  --bg-base: #0a0f1e;                      /* 页面底色：深蓝黑 */
+  --bg-panel: rgba(16, 24, 48, 0.72);      /* 面板底色：半透明深蓝 */
+  --bg-elevated: #101830;                  /* 抬升面：卡片/输入区 */
+
+  /* 主色与辅色 */
+  --primary: #00e5ff;                      /* 霓虹青主色 */
+  --primary-dim: rgba(0, 229, 255, 0.6);   /* 主色弱化：边框/分隔 */
+  --accent: #3b82f6;                       /* 蓝色辅色 */
+  --accent-2: #6366f1;                     /* 靛蓝点缀 */
+
+  /* 文本 */
+  --text-main: #e2e8f0;                    /* 主文本：浅灰蓝 */
+  --text-sub: #7c8db0;                     /* 次级文本 */
+
+  /* 边框与发光 */
+  --border-faint: rgba(0, 229, 255, 0.18);          /* 弱边框 */
+  --border-glow: rgba(0, 229, 255, 0.45);           /* 强调边框 */
+  --glow-cyan: 0 0 12px rgba(0, 229, 255, 0.45);    /* 青色光晕 */
+  --glow-text: 0 0 8px rgba(0, 229, 255, 0.55);     /* 文字发光 */
+
+  /* 字体 */
+  --font-family: 'PingFang SC', 'Microsoft YaHei', Avenir, Helvetica, Arial, sans-serif;
+}
+
+/* 全局基础：页面底色与字体 */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-base);
+  color: var(--text-main);
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 滚动条深色化（WebKit 内核） */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.25);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
