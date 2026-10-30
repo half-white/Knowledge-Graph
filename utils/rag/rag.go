@@ -2,6 +2,7 @@ package rag
 
 import (
 	"SSE/utils/embedding"
+	"SSE/utils/metrics"
 	"SSE/utils/vector"
 	"bytes"
 	"encoding/json"
@@ -86,18 +87,22 @@ func ensureIndex(driver neo4j.Driver) {
 }
 
 // BuildRAGContext 生成RAG参考上下文，失败返回空串（降级为普通抽取）
-func BuildRAGContext(driver neo4j.Driver, content string) string {
+func BuildRAGContext(driver neo4j.Driver, content string, trace *metrics.Trace) string {
 	ensureIndex(driver)
 
-	// 生成文本向量
+	// 生成文本向量（子环节计时：embedding）
+	embedStart := time.Now()
 	vec, err := embedding.Embed(content)
+	trace.Observe(metrics.StageRAGEmbed, time.Since(embedStart), err != nil)
 	if err != nil {
 		slog.Warn("生成embedding失败，降级为普通抽取", "error", err)
 		return ""
 	}
 
-	// 向量相似度检索相似高价值关系（阈值与数量可配置）
+	// 向量相似度检索相似高价值关系（阈值与数量可配置，子环节计时：检索）
+	searchStart := time.Now()
 	similar, err := vector.SearchSimilar(driver, vec, topK(), threshold())
+	trace.Observe(metrics.StageRAGSearch, time.Since(searchStart), err != nil)
 	if err != nil {
 		slog.Warn("向量检索失败，降级为普通抽取", "error", err)
 		return ""
@@ -115,21 +120,25 @@ func BuildRAGContext(driver neo4j.Driver, content string) string {
 }
 
 // SaveIfHighValue 判断并保存高价值关系向量（embedding→相似度去重→LLM判定→写入），embedding不可用时降级跳过
-func SaveIfHighValue(driver neo4j.Driver, head, rel, tail, uuid string) {
+func SaveIfHighValue(driver neo4j.Driver, head, rel, tail, uuid string, trace *metrics.Trace) {
 	ensureIndex(driver)
 
 	// 组合三元组文本
 	text := fmt.Sprintf("%s-%s-%s", head, rel, tail)
 
-	// 生成三元组向量
+	// 生成三元组向量（子环节计时：embedding）
+	embedStart := time.Now()
 	vec, err := embedding.Embed(text)
+	trace.Observe(metrics.StageRAGEmbed, time.Since(embedStart), err != nil)
 	if err != nil {
 		slog.Warn("生成embedding失败，跳过向量写入", "error", err)
 		return
 	}
 
-	// 检查库中是否已有相似度较高的关系（阈值可配置），有则不重复写入
+	// 检查库中是否已有相似度较高的关系（阈值可配置），有则不重复写入（子环节计时：检索）
+	searchStart := time.Now()
 	similar, err := vector.SearchSimilar(driver, vec, 1, threshold())
+	trace.Observe(metrics.StageRAGSearch, time.Since(searchStart), err != nil)
 	if err != nil {
 		slog.Warn("向量检索失败，跳过向量写入", "error", err)
 		return
@@ -138,15 +147,21 @@ func SaveIfHighValue(driver neo4j.Driver, head, rel, tail, uuid string) {
 		return
 	}
 
-	// 由LLM判定当前关系是否为高价值关系，是才写入向量
-	if !isHighValueRelation(head, rel, tail) {
+	// 由LLM判定当前关系是否为高价值关系，是才写入向量（子环节计时：判定）
+	judgeStart := time.Now()
+	highValue := isHighValueRelation(head, rel, tail)
+	trace.Observe(metrics.StageRAGJudge, time.Since(judgeStart), false)
+	if !highValue {
 		return
 	}
 
-	// 写入高价值三元组及向量
+	// 写入高价值三元组及向量（子环节计时：写入）
+	saveStart := time.Now()
 	if err := vector.SaveTriplet(driver, text, uuid, vec); err != nil {
+		trace.Observe(metrics.StageRAGSave, time.Since(saveStart), true)
 		slog.Error("保存三元组向量失败", "head", head, "relationship", rel, "tail", tail, "error", err)
 	} else {
+		trace.Observe(metrics.StageRAGSave, time.Since(saveStart), false)
 		slog.Debug("已保存高价值关系向量", "head", head, "relationship", rel, "tail", tail)
 	}
 }

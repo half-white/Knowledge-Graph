@@ -1,0 +1,427 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki-main"
+      },
+      "id": 1,
+      "title": "最近请求总耗时",
+      "description": "最近一次知识图谱生成请求的全流程墙钟耗时",
+      "type": "stat",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30000
+              },
+              {
+                "color": "red",
+                "value": 120000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki-main"
+          },
+          "editorMode": "code",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap total_ms [$__range])",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki-main"
+      },
+      "id": 2,
+      "title": "区间请求数",
+      "description": "所选时间范围内生成的知识图谱请求次数",
+      "type": "stat",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki-main"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"sse\"} |= \"流程耗时汇总\" [$__range]))",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki-main"
+      },
+      "id": 3,
+      "title": "区间处理切片数",
+      "description": "所选时间范围内文本切片总量（反映 LLM 抽取负载）",
+      "type": "stat",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki-main"
+          },
+          "editorMode": "code",
+          "expr": "sum(sum_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap chunk_count [$__range]))",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki-main"
+      },
+      "id": 4,
+      "title": "各环节耗时趋势",
+      "description": "按请求粒度采样各阶段耗时（last_over_time）；稀疏请求时段无点即无数据",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 13,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki-main"
+          },
+          "editorMode": "code",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap total_ms [$__interval])",
+          "queryType": "range",
+          "refId": "A",
+          "legendFormat": "总耗时"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki-main"
+          },
+          "editorMode": "code",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap llm_ms [$__interval])",
+          "queryType": "range",
+          "refId": "B",
+          "legendFormat": "LLM抽取累计"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki-main"
+          },
+          "editorMode": "code",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap llm_wall_ms [$__interval])",
+          "queryType": "range",
+          "refId": "C",
+          "legendFormat": "LLM并发墙钟"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki-main"
+          },
+          "editorMode": "code",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap rag_embedding_ms [$__interval])",
+          "queryType": "range",
+          "refId": "D",
+          "legendFormat": "RAG向量化"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki-main"
+          },
+          "editorMode": "code",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap graph_store_ms [$__interval])",
+          "queryType": "range",
+          "refId": "E",
+          "legendFormat": "图谱写入"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki-main"
+          },
+          "editorMode": "code",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap graph_query_ms [$__interval])",
+          "queryType": "range",
+          "refId": "F",
+          "legendFormat": "图谱查询"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki-main"
+      },
+      "id": 5,
+      "title": "请求耗时明细",
+      "description": "每次请求的流程耗时汇总结构化日志（含各阶段 ms、chunk_count、triplet_count 等）",
+      "type": "logs",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showLabels": false,
+        "showCommonLabels": false,
+        "showTime": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki-main"
+          },
+          "editorMode": "code",
+          "expr": "{job=\"sse\"} |= \"流程耗时汇总\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "sse",
+    "performance"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "SSE 流程性能监控",
+  "uid": "sse-perf-overview",
+  "version": 1,
+  "weekStart": ""
+}

@@ -5,6 +5,7 @@ import (
 	"SSE/global"
 	"SSE/models"
 	"SSE/response"
+	"SSE/utils/metrics"
 	"SSE/utils/rag"
 	"bytes"
 	"encoding/json"
@@ -40,8 +41,17 @@ func (ModelApi) UseModel(c *gin.Context) {
 		response.FailWithError(err, &cr, c)
 		return
 	}
+
+	// 性能监控：创建请求级追踪器，函数结束时自动汇总输出（REQ-003）
+	trace := metrics.StartTrace("text")
+	defer trace.Finish()
+	trace.SetMeta("title_len", len([]rune(cr.Title)))
+
 	// 将文本拆解为较短片段
+	splitStart := time.Now()
 	parts := splitContent(cr.Title)
+	trace.Observe(metrics.StageSplit, time.Since(splitStart), false)
+	trace.SetMeta("chunk_count", len(parts))
 
 	// 利用go多线程进行大语言模型调用逻辑
 	// 创建一个 slice 存储返回的结果
@@ -60,7 +70,9 @@ func (ModelApi) UseModel(c *gin.Context) {
 			defer func() {
 				<-ch // 释放go线程
 			}()
+			llmStart := time.Now()
 			result := TypeInModel(part)
+			trace.Observe(metrics.StageLLM, time.Since(llmStart), result == "")
 
 			// 使用 Mutex 保护对共享资源的操作
 			mu.Lock()
@@ -77,13 +89,20 @@ func (ModelApi) UseModel(c *gin.Context) {
 	}
 
 	// 提取三元组，形成唯一的uuid
+	tripletStart := time.Now()
 	triplets, uuid := ExtractTriplets(text)
+	trace.Observe(metrics.StageTriplet, time.Since(tripletStart), false)
+	trace.SetMeta("triplet_count", len(triplets))
 
 	// 将三元组插入Neo4j数据库，实体使用统一的uuid进行标记
-	saveToNeo4j(triplets, uuid)
+	storeStart := time.Now()
+	saveToNeo4j(triplets, uuid, trace)
+	trace.Observe(metrics.StageGraphStore, time.Since(storeStart), false)
 
 	// 将neo4j数据库中的相关数据展示成图谱
+	queryStart := time.Now()
 	result, _ := displayGraph(uuid)
+	trace.Observe(metrics.StageGraphQuery, time.Since(queryStart), result == "")
 	// fmt.Println(string(result))
 	slog.Debug("图谱展示结果类型", "type", fmt.Sprintf("%T", result))
 
@@ -374,7 +393,7 @@ func ExtractTriplets(text string) ([][]string, string) {
 }
 
 // 向Neo4j中插入节点
-func saveToNeo4j(triplets [][]string, id string) {
+func saveToNeo4j(triplets [][]string, id string, trace *metrics.Trace) {
 	driver := global.DB
 
 	// 创建与目标数据库的会话
@@ -418,7 +437,7 @@ func saveToNeo4j(triplets [][]string, id string) {
 		}
 
 		// RAG加强：判定并保存高价值关系向量（embedding不可用时自动降级跳过）
-		rag.SaveIfHighValue(driver, headEntity, relationship, tailEntity, id)
+		rag.SaveIfHighValue(driver, headEntity, relationship, tailEntity, id, trace)
 	}
 
 	slog.Info("三元组全部处理完成", "count", len(triplets), "uuid", id)
@@ -786,6 +805,10 @@ func getProjectRoot() string {
 
 // GetPdf 接收前端传递过来的pdf并且传递给大模型识别
 func (ModelApi) GetPdf(c *gin.Context) {
+	// 性能监控：创建请求级追踪器，函数结束时自动汇总输出（REQ-003）
+	trace := metrics.StartTrace("pdf")
+	defer trace.Finish()
+
 	// upload 保存文件路径：项目根目录下的 resource/doc 文件夹
 	root := getProjectRoot()
 	upload := filepath.Join(root, "resource", "doc")
@@ -828,15 +851,21 @@ func (ModelApi) GetPdf(c *gin.Context) {
 	}
 
 	// 调用python代码识别pdf文本
+	ocrStart := time.Now()
 	cmd := exec.Command("python", filepath.Join(root, "utils", "ocr.py"), file.Filename)
 	title, err := cmd.Output()
+	trace.Observe(metrics.StageOCR, time.Since(ocrStart), err != nil)
+	trace.SetMeta("filename", file.Filename)
 	if err != nil {
 		slog.Error("OCR解析PDF文本失败", "filename", file.Filename, "error", err)
 	}
 	// fmt.Println(string(title))
 
 	// 将文本拆解为较短片段
+	splitStart := time.Now()
 	parts := splitContent(string(title))
+	trace.Observe(metrics.StageSplit, time.Since(splitStart), false)
+	trace.SetMeta("chunk_count", len(parts))
 
 	// 利用go多线程进行大语言模型调用逻辑
 	// 创建一个 slice 存储返回的结果
@@ -855,7 +884,9 @@ func (ModelApi) GetPdf(c *gin.Context) {
 			defer func() {
 				<-ch // 释放go线程
 			}()
+			llmStart := time.Now()
 			result := TypeInModel(part)
+			trace.Observe(metrics.StageLLM, time.Since(llmStart), result == "")
 
 			// 使用 Mutex 保护对共享资源的操作
 			mu.Lock()
@@ -872,13 +903,20 @@ func (ModelApi) GetPdf(c *gin.Context) {
 	}
 
 	// 提取三元组，形成唯一的uuid
+	tripletStart := time.Now()
 	triplets, uuid := ExtractTriplets(text)
+	trace.Observe(metrics.StageTriplet, time.Since(tripletStart), false)
+	trace.SetMeta("triplet_count", len(triplets))
 
 	// 将三元组插入Neo4j数据库，实体使用统一的uuid进行标记
-	saveToNeo4j(triplets, uuid)
+	storeStart := time.Now()
+	saveToNeo4j(triplets, uuid, trace)
+	trace.Observe(metrics.StageGraphStore, time.Since(storeStart), false)
 
 	// 将neo4j数据库中的相关数据展示成图谱
+	queryStart := time.Now()
 	result, _ := displayGraph(uuid)
+	trace.Observe(metrics.StageGraphQuery, time.Since(queryStart), result == "")
 	// fmt.Println(string(result))
 	// fmt.Printf("Result Type: %T\n", result)
 
