@@ -359,12 +359,11 @@ func TypeInModel(content string) string {
 
 	var responseData ResponseData
 	if err := json.Unmarshal(responseBody, &responseData); err != nil {
-		slog.Error("解析LLM响应失败", "error", err)
 		return ""
 	}
 
 	if len(responseData.Choices) == 0 {
-		slog.Warn("LLM响应为空", "choices_len", 0)
+		slog.Warn("LLM响应为空", "choices_len", string(responseBody))
 		return ""
 	}
 
