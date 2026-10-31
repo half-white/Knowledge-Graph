@@ -28,7 +28,7 @@
       },
       "id": 1,
       "title": "最近请求总耗时",
-      "description": "最近一次知识图谱生成请求的全流程墙钟耗时",
+      "description": "最近一次知识图谱生成请求的全流程墙钟耗时（时间轴分布见下方趋势图，每次请求明细见底部日志）",
       "type": "stat",
       "gridPos": {
         "h": 6,
@@ -85,7 +85,7 @@
             "uid": "loki-main"
           },
           "editorMode": "code",
-          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap total_ms [$__range])",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | keep total_ms | unwrap total_ms [$__range])",
           "queryType": "range",
           "refId": "A"
         }
@@ -207,7 +207,7 @@
             "uid": "loki-main"
           },
           "editorMode": "code",
-          "expr": "sum(sum_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap chunk_count [$__range]))",
+          "expr": "sum(sum_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | keep chunk_count | unwrap chunk_count [$__range]))",
           "queryType": "range",
           "refId": "A"
         }
@@ -220,7 +220,7 @@
       },
       "id": 4,
       "title": "各环节耗时趋势",
-      "description": "按请求粒度采样各阶段耗时（last_over_time）；稀疏请求时段无点即无数据",
+      "description": "时间轴上每个点对应一次真实请求（悬停可查看该请求的发生时刻与各阶段耗时）；稀疏请求时段无点即无数据",
       "type": "timeseries",
       "gridPos": {
         "h": 13,
@@ -300,7 +300,7 @@
             "uid": "loki-main"
           },
           "editorMode": "code",
-          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap total_ms [$__interval])",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | keep total_ms | unwrap total_ms [$__interval])",
           "queryType": "range",
           "refId": "A",
           "legendFormat": "总耗时"
@@ -311,7 +311,7 @@
             "uid": "loki-main"
           },
           "editorMode": "code",
-          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap llm_ms [$__interval])",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | keep llm_ms | unwrap llm_ms [$__interval])",
           "queryType": "range",
           "refId": "B",
           "legendFormat": "LLM抽取累计"
@@ -322,7 +322,7 @@
             "uid": "loki-main"
           },
           "editorMode": "code",
-          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap llm_wall_ms [$__interval])",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | keep llm_wall_ms | unwrap llm_wall_ms [$__interval])",
           "queryType": "range",
           "refId": "C",
           "legendFormat": "LLM并发墙钟"
@@ -333,7 +333,7 @@
             "uid": "loki-main"
           },
           "editorMode": "code",
-          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap rag_embedding_ms [$__interval])",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | keep rag_embedding_ms | unwrap rag_embedding_ms [$__interval])",
           "queryType": "range",
           "refId": "D",
           "legendFormat": "RAG向量化"
@@ -344,7 +344,7 @@
             "uid": "loki-main"
           },
           "editorMode": "code",
-          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap graph_store_ms [$__interval])",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | keep graph_store_ms | unwrap graph_store_ms [$__interval])",
           "queryType": "range",
           "refId": "E",
           "legendFormat": "图谱写入"
@@ -355,7 +355,7 @@
             "uid": "loki-main"
           },
           "editorMode": "code",
-          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | unwrap graph_query_ms [$__interval])",
+          "expr": "last_over_time({job=\"sse\"} |= \"流程耗时汇总\" | json | keep graph_query_ms | unwrap graph_query_ms [$__interval])",
           "queryType": "range",
           "refId": "F",
           "legendFormat": "图谱查询"

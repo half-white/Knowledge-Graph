@@ -29,3 +29,6 @@ deploy/jenkins/jenkins_home/
 
 # ./.cursor/ 目录
 /.cursor/
+
+# Go 调试器（Delve）生成的临时调试二进制
+__debug_bin*
