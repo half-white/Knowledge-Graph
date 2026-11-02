@@ -5,7 +5,7 @@
 // 在 Grafana 看板（deploy/observability）可视化与告警。
 //
 // 日志字段契约（Grafana LogQL 依赖）：
-//	trace_id, source, total_ms, {stage}_ms（10 个阶段）, {stage}_errs（仅失败时）,
+//	trace_id, source, total_ms, {stage}_ms（9 个阶段）, {stage}_errs（仅失败时）,
 //	chunk_count, triplet_count, llm_wall_ms, filename 等 meta。
 //	含点号的 stage key 由 Loki json 解析规范化为下划线（graph.store_ms → graph_store_ms）。
 //
@@ -30,9 +30,8 @@ const (
 	StageLLM        = "llm"           // LLM三元组抽取（单次调用粒度，并发执行）
 	StageTriplet    = "triplet"       // 三元组提取
 	StageRAGEmbed   = "rag.embedding" // RAG子环节：embedding生成
-	StageRAGSearch  = "rag.search"    // RAG子环节：向量相似度检索
-	StageRAGJudge   = "rag.judge"     // RAG子环节：LLM高价值判定
-	StageRAGSave    = "rag.save"      // RAG子环节：向量写入
+	StageRAGSearch  = "rag.search"    // RAG子环节：原子项相似度检索
+	StageRAGSave    = "rag.save"      // RAG子环节：原子项向量写入
 	StageGraphStore = "graph.store"   // Neo4j三元组写入
 	StageGraphQuery = "graph.query"   // 图谱查询与JSON组装
 )

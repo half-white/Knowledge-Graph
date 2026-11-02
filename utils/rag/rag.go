@@ -4,12 +4,8 @@ import (
 	"SSE/utils/embedding"
 	"SSE/utils/metrics"
 	"SSE/utils/vector"
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log/slog"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -21,28 +17,13 @@ import (
 
 // 默认配置
 const (
-	// 默认相似度阈值：高于该值视为相似关系（可通过环境变量RAG_THRESHOLD覆盖）
+	// 默认相似度阈值：高于该值视为相似原子项（可通过环境变量RAG_THRESHOLD覆盖）。
+	// 注意：阈值为Neo4j向量索引的score空间（score=(1+数学余弦)/2，实际值域[0.5,1]），
+	// 0.75约等于数学余弦0.5；设高阈值（如0.98≈余弦0.96）仅命中近乎相同的文本。
 	DefaultThreshold = 0.75
-	// 默认检索返回的最大相似关系数量（可通过环境变量RAG_TOP_K覆盖）
+	// 默认检索返回的最大相似原子项数量（可通过环境变量RAG_TOP_K覆盖）
 	DefaultTopK = 5
-	// 高价值关系判定默认使用的LLM模型（可通过环境变量GLM_MODEL覆盖，见 judgeModelName）
-	DefaultJudgeModel = "glm-4-flash"
-	// 高价值关系判定接口地址
-	judgeURL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 )
-
-// judgeModelName 读取判定用模型名（环境变量GLM_MODEL覆盖，与use_model.go共用同一变量）
-func judgeModelName() string {
-	if v := os.Getenv("GLM_MODEL"); v != "" {
-		return v
-	}
-	return DefaultJudgeModel
-}
-
-// judgeAPIKey 读取GLM API密钥（环境变量GLM_API_KEY，与use_model.go共用）
-func judgeAPIKey() string {
-	return os.Getenv("GLM_API_KEY")
-}
 
 // threshold 读取可配置的相似度阈值（环境变量RAG_THRESHOLD覆盖，默认DefaultThreshold）
 func threshold() float64 {
@@ -119,116 +100,48 @@ func BuildRAGContext(driver neo4j.Driver, content string, trace *metrics.Trace) 
 	return context
 }
 
-// SaveIfHighValue 判断并保存高价值关系向量（embedding→相似度去重→LLM判定→写入），embedding不可用时降级跳过
-func SaveIfHighValue(driver neo4j.Driver, head, rel, tail, uuid string, trace *metrics.Trace) {
+// SaveIfNew 对三元组的头实体、关系、尾实体逐一做原子粒度保留判定：
+// 向量化 → 与现存原子向量相似匹配 → 未命中（新项）入库保留，命中（已存在）跳过。
+// embedding/检索失败时降级跳过该原子项，不阻断主流程（图谱写入已在调用方先行完成）。
+func SaveIfNew(driver neo4j.Driver, head, rel, tail, uuid string, trace *metrics.Trace) {
 	ensureIndex(driver)
 
-	// 组合三元组文本
-	text := fmt.Sprintf("%s-%s-%s", head, rel, tail)
+	// 头实体、关系、尾实体作为独立原子项逐一判定
+	for _, item := range []string{head, rel, tail} {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue // 空原子项跳过
+		}
 
-	// 生成三元组向量（子环节计时：embedding）
-	embedStart := time.Now()
-	vec, err := embedding.Embed(text)
-	trace.Observe(metrics.StageRAGEmbed, time.Since(embedStart), err != nil)
-	if err != nil {
-		slog.Warn("生成embedding失败，跳过向量写入", "error", err)
-		return
-	}
+		// 生成原子项向量（子环节计时：embedding）
+		embedStart := time.Now()
+		vec, err := embedding.Embed(item)
+		trace.Observe(metrics.StageRAGEmbed, time.Since(embedStart), err != nil)
+		if err != nil {
+			slog.Warn("生成embedding失败，跳过该原子项", "item", item, "error", err)
+			continue
+		}
 
-	// 检查库中是否已有相似度较高的关系（阈值可配置），有则不重复写入（子环节计时：检索）
-	searchStart := time.Now()
-	similar, err := vector.SearchSimilar(driver, vec, 1, threshold())
-	trace.Observe(metrics.StageRAGSearch, time.Since(searchStart), err != nil)
-	if err != nil {
-		slog.Warn("向量检索失败，跳过向量写入", "error", err)
-		return
-	}
-	if len(similar) > 0 {
-		return
-	}
+		// 与库中现存原子向量做相似匹配（阈值可配置），命中说明已存在，不重复入库（子环节计时：检索）
+		searchStart := time.Now()
+		similar, err := vector.SearchSimilar(driver, vec, 1, threshold())
+		trace.Observe(metrics.StageRAGSearch, time.Since(searchStart), err != nil)
+		if err != nil {
+			slog.Warn("向量检索失败，跳过该原子项", "item", item, "error", err)
+			continue
+		}
+		if len(similar) > 0 {
+			continue
+		}
 
-	// 由LLM判定当前关系是否为高价值关系，是才写入向量（子环节计时：判定）
-	judgeStart := time.Now()
-	highValue := isHighValueRelation(head, rel, tail)
-	trace.Observe(metrics.StageRAGJudge, time.Since(judgeStart), false)
-	if !highValue {
-		return
+		// 未命中：新原子项入库保留（子环节计时：写入）
+		saveStart := time.Now()
+		if err := vector.SaveAtom(driver, item, uuid, vec); err != nil {
+			trace.Observe(metrics.StageRAGSave, time.Since(saveStart), true)
+			slog.Error("保存原子项向量失败", "item", item, "uuid", uuid, "error", err)
+		} else {
+			trace.Observe(metrics.StageRAGSave, time.Since(saveStart), false)
+			slog.Debug("已保存原子项向量", "item", item)
+		}
 	}
-
-	// 写入高价值三元组及向量（子环节计时：写入）
-	saveStart := time.Now()
-	if err := vector.SaveTriplet(driver, text, uuid, vec); err != nil {
-		trace.Observe(metrics.StageRAGSave, time.Since(saveStart), true)
-		slog.Error("保存三元组向量失败", "head", head, "relationship", rel, "tail", tail, "error", err)
-	} else {
-		trace.Observe(metrics.StageRAGSave, time.Since(saveStart), false)
-		slog.Debug("已保存高价值关系向量", "head", head, "relationship", rel, "tail", tail)
-	}
-}
-
-// isHighValueRelation 调用LLM轻量判定关系是否为高价值关系
-func isHighValueRelation(head, rel, tail string) bool {
-	// 构造判定提示词
-	prompt := fmt.Sprintf("判断以下三元组关系是否是知识图谱中值得保留的高价值关系，只回答'是'或'否'：%s-%s-%s", head, rel, tail)
-
-	// 构造请求数据
-	payload := map[string]interface{}{
-		"model": judgeModelName(),
-		"messages": []map[string]interface{}{
-			{
-				"role":    "user",
-				"content": prompt,
-			},
-		},
-	}
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		slog.Error("构造判定请求失败", "error", err)
-		return false
-	}
-
-	// 创建HTTP请求
-	req, err := http.NewRequest("POST", judgeURL, bytes.NewBuffer(jsonPayload))
-	if err != nil {
-		slog.Error("创建判定请求失败", "error", err)
-		return false
-	}
-	req.Header.Set("Authorization", "Bearer "+judgeAPIKey())
-	req.Header.Set("Content-Type", "application/json")
-
-	// 发送请求并获取响应（设置超时避免LLM挂起阻塞主流程，与embedding调用一致）
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		slog.Error("调用LLM判定失败", "error", err)
-		return false
-	}
-	defer resp.Body.Close()
-
-	// 读取响应体
-	responseBody, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		slog.Error("读取判定响应失败", "error", err)
-		return false
-	}
-
-	// 解析响应
-	var responseData struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(responseBody, &responseData); err != nil {
-		slog.Error("解析判定响应失败", "error", err)
-		return false
-	}
-	if len(responseData.Choices) == 0 {
-		return false
-	}
-
-	// 判断LLM回答是否为"是"
-	answer := strings.TrimSpace(responseData.Choices[0].Message.Content)
-	return strings.HasPrefix(answer, "是") || strings.HasPrefix(answer, "true") || strings.HasPrefix(answer, "YES")
 }

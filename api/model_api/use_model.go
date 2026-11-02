@@ -435,8 +435,8 @@ func saveToNeo4j(triplets [][]string, id string, trace *metrics.Trace) {
 			slog.Debug("三元组写入成功", "head", headEntity, "relationship", relationship, "tail", tailEntity)
 		}
 
-		// RAG加强：判定并保存高价值关系向量（embedding不可用时自动降级跳过）
-		rag.SaveIfHighValue(driver, headEntity, relationship, tailEntity, id, trace)
+		// RAG：原子项（头实体/关系/尾实体）保留判定与新项向量入库（embedding不可用时自动降级跳过）
+		rag.SaveIfNew(driver, headEntity, relationship, tailEntity, id, trace)
 	}
 
 	slog.Info("三元组全部处理完成", "count", len(triplets), "uuid", id)
