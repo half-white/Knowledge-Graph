@@ -28,7 +28,8 @@ const (
 	StageOCR        = "ocr"           // OCR识别
 	StageSplit      = "split"         // 文本切片
 	StageLLM        = "llm"           // LLM三元组抽取（单次调用粒度，并发执行）
-	StageTriplet    = "triplet"       // 三元组提取
+	StageTriplet    = "triplet"       // 三元组解析与硬校验（单块粒度，并发执行）
+	StageVerify     = "verify"        // 三元组验证归一（LLM审核pass，单块粒度，并发执行）
 	StageRAGEmbed   = "rag.embedding" // RAG子环节：embedding生成
 	StageRAGSearch  = "rag.search"    // RAG子环节：原子项相似度检索
 	StageRAGSave    = "rag.save"      // RAG子环节：原子项向量写入

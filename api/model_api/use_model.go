@@ -7,6 +7,7 @@ import (
 	"SSE/response"
 	"SSE/utils/metrics"
 	"SSE/utils/rag"
+	"SSE/utils/triplet"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -27,6 +28,9 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j/dbtype"
 )
+
+// llmURL 三元组抽取接口地址（包级变量，测试可替换）
+var llmURL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
 // 定义需要输入的请求数据
 type UseModelRequest struct {
@@ -53,61 +57,28 @@ func (ModelApi) UseModel(c *gin.Context) {
 	trace.Observe(metrics.StageSplit, time.Since(splitStart), false)
 	trace.SetMeta("chunk_count", len(parts))
 
-	// 利用go多线程进行大语言模型调用逻辑
-	// 创建一个 slice 存储返回的结果
+	// 分块抽取管道：并发抽取→解析→硬校验→验证归一→汇总去重（UseModel/GetPdf 共用）
 	slog.Info("文本已拆解", "chunk_count", len(parts))
-	results := make([]string, len(parts))
-	ch := make(chan struct{}, 5) // 生成一个线程池
+	triplets, text := runExtractionPipeline(parts, trace)
 
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	for i, part := range parts {
-		wg.Add(1)
-		ch <- struct{}{} // 阻塞直到有空闲 Goroutine
-		go func(i int, part string) {
-			defer wg.Done()
-			defer func() {
-				<-ch // 释放go线程
-			}()
-			llmStart := time.Now()
-			result := TypeInModel(part)
-			trace.Observe(metrics.StageLLM, time.Since(llmStart), result == "")
-
-			// 使用 Mutex 保护对共享资源的操作
-			mu.Lock()
-			results[i] = result
-			mu.Unlock()
-
-		}(i, part)
-	}
-	wg.Wait()
-
-	text := ""
-	for _, result := range results {
-		text += result + "\n"
-	}
-
-	// 提取三元组，形成唯一的uuid
-	tripletStart := time.Now()
-	triplets, uuid := ExtractTriplets(text)
-	trace.Observe(metrics.StageTriplet, time.Since(tripletStart), false)
-	trace.SetMeta("triplet_count", len(triplets))
+	// 形成唯一标识的uuid（使用当前时间戳 + UUID）
+	ID := fmt.Sprintf("%d-%s", time.Now().Unix(), uuid.New().String())
+	slog.Info("三元组抽取完成", "uuid", ID, "triplet_count", len(triplets))
 
 	// 将三元组插入Neo4j数据库，实体使用统一的uuid进行标记
 	storeStart := time.Now()
-	saveToNeo4j(triplets, uuid, trace)
+	saveToNeo4j(triplets, ID, trace)
 	trace.Observe(metrics.StageGraphStore, time.Since(storeStart), false)
 
 	// 将neo4j数据库中的相关数据展示成图谱
 	queryStart := time.Now()
-	result, _ := displayGraph(uuid)
+	result, _ := displayGraph(ID)
 	trace.Observe(metrics.StageGraphQuery, time.Since(queryStart), result == "")
 	// fmt.Println(string(result))
 	slog.Debug("图谱展示结果类型", "type", fmt.Sprintf("%T", result))
 
 	// 自动保留每次生成的知识图谱，以便管理
-	saveGraph(uuid)
+	saveGraph(ID)
 
 	// response.OkWithMessage(text, c)
 	response.Ok(result, text, c)
@@ -299,16 +270,16 @@ func TypeInModel(content string) string {
 3. 同一实体在不同句子中出现时使用完全相同的名称，不要有时写全称有时写简称；
 4. 关系用一个简短的词或短语概括（如"创始人"、"位于"、"提出"）；
 5. 实体和关系的名称中不要包含逗号；
-6. 最多输出8个最重要的三元组，不足8个则有多少输出多少。
+6. 最多输出8个最重要的三元组，不足8个则有多少输出多少；
+7. 头实体和尾实体必须是文本中出现的完整规范名称，不能是代词、截断短语或你自己缩写的简称。
 
-输出格式（严格遵守，每行一个，不要序号和任何其他文字）：
-（头实体，关系，尾实体）
+输出格式（严格遵守，输出 JSON 数组，不要有任何额外文字、序号或代码块标记）：
+[{"head":"头实体","relation":"关系","tail":"尾实体"}]
 
 示例：
 输入：乔布斯于1976年创立了苹果公司，该公司后来发布了风靡全球的iPhone。
 输出：
-（乔布斯，创立，苹果公司）
-（苹果公司，发布，iPhone）
+[{"head":"乔布斯","relation":"创立","tail":"苹果公司"},{"head":"苹果公司","relation":"发布","tail":"iPhone"}]
 
 以下是需要处理的文本内容：
 `
@@ -320,8 +291,6 @@ func TypeInModel(content string) string {
 	if model == "" {
 		model = "glm-4-flash" // 当前唯一免费可用；如需切换在 .env 配 GLM_MODEL
 	}
-
-	url := "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
 	payload := map[string]interface{}{
 		"model": model,
@@ -336,7 +305,7 @@ func TypeInModel(content string) string {
 	jsonPayload, _ := json.Marshal(payload)
 
 	// 创建HTTP请求
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	req, _ := http.NewRequest("POST", llmURL, bytes.NewBuffer(jsonPayload))
 
 	// 设置请求头
 	req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -346,7 +315,7 @@ func TypeInModel(content string) string {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		slog.Error("调用LLM接口失败", "url", url, "error", err)
+		slog.Error("调用LLM接口失败", "url", llmURL, "error", err)
 		return ""
 	}
 	defer resp.Body.Close()
@@ -372,27 +341,159 @@ func TypeInModel(content string) string {
 
 }
 
-// 将文本内容中的三元组信息匹配到三元组形式的格式中
-func ExtractTriplets(text string) ([][]string, string) {
-	// 匹配括号中的三元组
-	re := regexp.MustCompile(`[（(]([^，,]+)[，,]\s*([^，,]+)[，,]\s*([^)）]+)[）)]`)
-	matches := re.FindAllStringSubmatch(text, -1)
-
-	var triplets [][]string
-	for _, match := range matches {
-		// match[1], match[2], match[3] 分别是头实体、关系、尾实体
-		triplets = append(triplets, []string{strings.TrimSpace(match[1]), strings.TrimSpace(match[2]), strings.TrimSpace(match[3])})
+// parseTriplets 解析 LLM 抽取输出为候选三元组：JSON 数组优先（容忍 markdown 围栏与前后杂文字），
+// 失败降级正则匹配（头，关系，尾）自由文本格式（历史兼容路径）
+func parseTriplets(text string) []triplet.Triplet {
+	trimmed := strings.TrimSpace(text)
+	if trimmed != "" {
+		if items, err := parseJSONArray(trimmed); err == nil {
+			return items
+		}
 	}
 
-	// 生成唯一标识的uuid（使用当前时间戳 + UUID）
-	ID := fmt.Sprintf("%d-%s", time.Now().Unix(), uuid.New().String())
-	slog.Info("三元组提取完成", "uuid", ID, "triplet_count", len(triplets))
+	// 正则降级：匹配括号中的三元组（match[1..3] 分别是头实体、关系、尾实体）
+	re := regexp.MustCompile(`[（(]([^，,]+)[，,]\s*([^，,]+)[，,]\s*([^)）]+)[）)]`)
+	matches := re.FindAllStringSubmatch(text, -1)
+	var triplets []triplet.Triplet
+	for _, match := range matches {
+		triplets = append(triplets, triplet.Triplet{
+			Head:     strings.TrimSpace(match[1]),
+			Relation: strings.TrimSpace(match[2]),
+			Tail:     strings.TrimSpace(match[3]),
+		})
+	}
+	return triplets
+}
 
-	return triplets, ID
+// parseJSONArray 解析 JSON 数组形式的三元组（直接解析失败时截取首 [ 至末 ] 再解析）
+func parseJSONArray(text string) ([]triplet.Triplet, error) {
+	var items []triplet.Triplet
+	if err := json.Unmarshal([]byte(text), &items); err != nil {
+		start := strings.Index(text, "[")
+		end := strings.LastIndex(text, "]")
+		if start < 0 || end <= start {
+			return nil, fmt.Errorf("未找到 JSON 数组")
+		}
+		if err := json.Unmarshal([]byte(text[start:end+1]), &items); err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
+}
+
+// renderTriplets 将三元组集合渲染为（头，关系，尾）文本格式（前端展示用，与历史展示格式一致）
+func renderTriplets(triplets []triplet.Triplet) string {
+	var lines []string
+	for _, t := range triplets {
+		lines = append(lines, fmt.Sprintf("（%s，%s，%s）", t.Head, t.Relation, t.Tail))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// chunkResult 单块抽取结果：候选/校验计数（漏斗用）+ 通过验证的三元组
+type chunkResult struct {
+	candidates int
+	validated  int
+	verified   []triplet.Triplet
+	dropped    map[string]int
+}
+
+// runExtractionPipeline 分块抽取公共管道（UseModel/GetPdf 共用）：
+// 并发抽取→解析→硬校验→验证归一→汇总去重。
+// 每块在现有并发 goroutine 内顺序执行各环节；验证失败降级为该块候选全部保留（可用性优先）。
+// 返回最终入库的三元组集合（规范名、跨块已去重）与前端展示文本，漏斗计数写入 trace。
+func runExtractionPipeline(parts []string, trace *metrics.Trace) ([]triplet.Triplet, string) {
+	results := make([]chunkResult, len(parts))
+	ch := make(chan struct{}, 5) // 生成一个线程池
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for i, part := range parts {
+		wg.Add(1)
+		ch <- struct{}{} // 阻塞直到有空闲 Goroutine
+		go func(i int, part string) {
+			defer wg.Done()
+			defer func() {
+				<-ch // 释放go线程
+			}()
+
+			// 抽取（子环节计时：LLM）
+			llmStart := time.Now()
+			raw := TypeInModel(part)
+			trace.Observe(metrics.StageLLM, time.Since(llmStart), raw == "")
+
+			// 解析候选三元组 + 硬校验（子环节计时：triplet）
+			parseStart := time.Now()
+			candidates := parseTriplets(raw)
+			validated, dropped := triplet.Validate(candidates)
+			trace.Observe(metrics.StageTriplet, time.Since(parseStart), false)
+
+			// 验证归一（子环节计时：verify）；失败降级为全部保留，不阻断主流程
+			verifyStart := time.Now()
+			verified, err := triplet.VerifyTriplets(part, validated)
+			trace.Observe(metrics.StageVerify, time.Since(verifyStart), err != nil)
+			if err != nil {
+				slog.Warn("三元组验证失败，降级为全部保留", "chunk_index", i, "count", len(validated), "error", err)
+				verified = validated
+			}
+
+			// 使用 Mutex 保护对共享资源的操作
+			mu.Lock()
+			results[i] = chunkResult{
+				candidates: len(candidates),
+				validated:  len(validated),
+				verified:   verified,
+				dropped:    dropped,
+			}
+			mu.Unlock()
+
+		}(i, part)
+	}
+	wg.Wait()
+
+	// 聚合漏斗计数
+	candidateTotal, validatedTotal, verifiedTotal := 0, 0, 0
+	droppedTotal := map[string]int{}
+	var merged []triplet.Triplet
+	for _, r := range results {
+		candidateTotal += r.candidates
+		validatedTotal += r.validated
+		verifiedTotal += len(r.verified)
+		for k, v := range r.dropped {
+			droppedTotal[k] += v
+		}
+		merged = append(merged, r.verified...)
+	}
+
+	// 跨块精确去重：归一后同 head+relation+tail 仅保留一条
+	// （图谱层 MERGE 本身幂等不重复画边，去重收益为省冗余写入与原子 embedding 调用）
+	seen := make(map[string]bool)
+	var final []triplet.Triplet
+	for _, t := range merged {
+		key := t.Head + "\x00" + t.Relation + "\x00" + t.Tail
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		final = append(final, t)
+	}
+
+	// 漏斗四级计数与丢弃分类写入监控（triplet_count 键名保留，兼容既有看板）
+	trace.SetMeta("candidate_count", candidateTotal)
+	trace.SetMeta("validated_count", validatedTotal)
+	trace.SetMeta("verified_count", verifiedTotal)
+	trace.SetMeta("dropped_empty", droppedTotal[triplet.DroppedEmpty])
+	trace.SetMeta("dropped_len", droppedTotal[triplet.DroppedLen])
+	trace.SetMeta("dropped_blacklist", droppedTotal[triplet.DroppedBlacklist])
+	trace.SetMeta("dropped_format", droppedTotal[triplet.DroppedFormat])
+	trace.SetMeta("triplet_count", len(final))
+
+	return final, renderTriplets(final)
 }
 
 // 向Neo4j中插入节点
-func saveToNeo4j(triplets [][]string, id string, trace *metrics.Trace) {
+func saveToNeo4j(triplets []triplet.Triplet, id string, trace *metrics.Trace) {
 	driver := global.DB
 
 	// 创建与目标数据库的会话
@@ -409,16 +510,16 @@ func saveToNeo4j(triplets [][]string, id string, trace *metrics.Trace) {
 	// 循环处理每个三元组
 	for _, record := range triplets {
 
-		// 假设每一行数据是（实体1，关系，实体2）
-		headEntity := record[0]
-		relationship := record[1]
-		tailEntity := record[2]
+		headEntity := record.Head
+		relationship := record.Relation
+		tailEntity := record.Tail
 
-		// 创建节点并添加关系的查询语句
+		// 创建节点并添加关系的查询语句（关系类型用反引号包裹，
+		// 避免特殊字符导致 Cypher 语法错误、三元组静默丢失）
 		query := `
 		MERGE (e1:Entity {name:$headEntity,uuid:$id})
 		MERGE (e2:Entity {name:$tailEntity,uuid:$id})
-		MERGE (e1)-[:` + relationship + `]->(e2)
+		MERGE (e1)-[:` + "`" + relationship + "`" + `]->(e2)
 		`
 
 		// 执行查询
@@ -866,61 +967,28 @@ func (ModelApi) GetPdf(c *gin.Context) {
 	trace.Observe(metrics.StageSplit, time.Since(splitStart), false)
 	trace.SetMeta("chunk_count", len(parts))
 
-	// 利用go多线程进行大语言模型调用逻辑
-	// 创建一个 slice 存储返回的结果
+	// 分块抽取管道：并发抽取→解析→硬校验→验证归一→汇总去重（UseModel/GetPdf 共用）
 	slog.Info("PDF文本已拆解", "chunk_count", len(parts))
-	results := make([]string, len(parts))
-	ch := make(chan struct{}, 5) // 生成一个线程池
+	triplets, text := runExtractionPipeline(parts, trace)
 
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	for i, part := range parts {
-		wg.Add(1)
-		ch <- struct{}{} // 阻塞直到有空闲 Goroutine
-		go func(i int, part string) {
-			defer wg.Done()
-			defer func() {
-				<-ch // 释放go线程
-			}()
-			llmStart := time.Now()
-			result := TypeInModel(part)
-			trace.Observe(metrics.StageLLM, time.Since(llmStart), result == "")
-
-			// 使用 Mutex 保护对共享资源的操作
-			mu.Lock()
-			results[i] = result
-			mu.Unlock()
-
-		}(i, part)
-	}
-	wg.Wait()
-
-	text := ""
-	for _, result := range results {
-		text += result + "\n"
-	}
-
-	// 提取三元组，形成唯一的uuid
-	tripletStart := time.Now()
-	triplets, uuid := ExtractTriplets(text)
-	trace.Observe(metrics.StageTriplet, time.Since(tripletStart), false)
-	trace.SetMeta("triplet_count", len(triplets))
+	// 形成唯一标识的uuid（使用当前时间戳 + UUID）
+	ID := fmt.Sprintf("%d-%s", time.Now().Unix(), uuid.New().String())
+	slog.Info("三元组抽取完成", "uuid", ID, "triplet_count", len(triplets))
 
 	// 将三元组插入Neo4j数据库，实体使用统一的uuid进行标记
 	storeStart := time.Now()
-	saveToNeo4j(triplets, uuid, trace)
+	saveToNeo4j(triplets, ID, trace)
 	trace.Observe(metrics.StageGraphStore, time.Since(storeStart), false)
 
 	// 将neo4j数据库中的相关数据展示成图谱
 	queryStart := time.Now()
-	result, _ := displayGraph(uuid)
+	result, _ := displayGraph(ID)
 	trace.Observe(metrics.StageGraphQuery, time.Since(queryStart), result == "")
 	// fmt.Println(string(result))
 	// fmt.Printf("Result Type: %T\n", result)
 
 	// 自动保留每次生成的知识图谱，以便管理
-	saveGraph(uuid)
+	saveGraph(ID)
 
 	// 删除本地pdf
 	err = os.Remove(savePath)
