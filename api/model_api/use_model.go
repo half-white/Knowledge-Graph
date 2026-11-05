@@ -5,16 +5,15 @@ import (
 	"SSE/global"
 	"SSE/models"
 	"SSE/response"
+	"SSE/utils/llm"
 	"SSE/utils/metrics"
 	"SSE/utils/rag"
 	"SSE/utils/triplet"
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,7 +28,8 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j/dbtype"
 )
 
-// llmURL 三元组抽取接口地址（包级变量，测试可替换）
+// llmURL 三元组抽取接口地址（完整端点，包级变量，测试可替换为 mock 地址；
+// 实际请求经 llm.ChatWithURL 派生 OpenAI 兼容 BaseURL 走 eino ChatModel）
 var llmURL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
 // 定义需要输入的请求数据
@@ -84,184 +84,7 @@ func (ModelApi) UseModel(c *gin.Context) {
 	response.Ok(result, text, c)
 }
 
-// 获取文心一言大模型token（凭据从环境变量读取，避免硬编码）
-func get_access_token() string {
-	// 构建请求URL
-	rawURL := "https://aip.baidubce.com/oauth/2.0/token"
-	params := url.Values{}
-	params.Add("grant_type", "client_credentials")
-	params.Add("client_id", os.Getenv("BAIDU_CLIENT_ID"))         // 环境变量BAIDU_CLIENT_ID
-	params.Add("client_secret", os.Getenv("BAIDU_CLIENT_SECRET")) // 环境变量BAIDU_CLIENT_SECRET
-	encodedParams := params.Encode()
-	fullURL := rawURL + "?" + encodedParams
-
-	// 创建HTTP请求
-	resp, err := http.Get(fullURL)
-	if err != nil {
-		slog.Error("获取llm token请求失败", "error", err)
-		return "error"
-	}
-	defer resp.Body.Close()
-
-	// 读取响应体
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		slog.Error("读取token响应失败", "error", err)
-		return "error"
-	}
-
-	// 解析JSON响应
-	var result map[string]interface{}
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		slog.Error("解析token响应失败", "error", err)
-		return "error"
-	}
-
-	// 获取access_token
-	accessToken, ok := result["access_token"].(string)
-	if !ok {
-		slog.Error("获取access_token失败")
-		return "error"
-	}
-
-	return accessToken
-}
-
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type RequestData struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Temperature float64   `json:"temperature"`
-	TopP        float64   `json:"top_p"`
-	MaxTokens   int       `json:"max_tokens"`
-	Stream      bool      `json:"stream"`
-}
-
-type ResponseData struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-}
-
 func TypeInModel(content string) string {
-	// // 文心一言http调用逻辑
-	// // 获取access_token（这里应该处理错误）
-	// accessToken := get_access_token()
-	// if accessToken == "error" {
-	// 	fmt.Println("Error getting access_token")
-	// 	return ""
-	// }
-
-	// // 构建请求URL
-	// url := "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/ernie_speed?access_token=" + accessToken
-
-	// // 准备JSON格式的payload
-	// payload := map[string]interface{}{
-	// 	"messages": []map[string]interface{}{
-	// 		{
-	// 			"role":    "user",
-	// 			"content": content + "帮我把上面这段文字的关键内容提炼成多个三元组，输出格式为（头实体,关系,尾实体），不要有任何额外文字，前后招呼语也去除",
-	// 		},
-	// 	},
-	// }
-
-	// // 将payload编码为JSON格式的字节切片
-	// jsonPayload, _ := json.Marshal(payload)
-
-	// // 创建HTTP请求
-	// req, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
-
-	// // 设置请求头
-	// req.Header.Set("Content-Type", "application/json")
-
-	// // 发送请求并获取响应
-	// client := &http.Client{}
-	// resp, _ := client.Do(req)
-	// defer resp.Body.Close()
-
-	// // 读取响应体
-	// body, _ := ioutil.ReadAll(resp.Body)
-
-	// // 解析JSON响应
-	// var result map[string]interface{}
-	// _ = json.Unmarshal(body, &result)
-
-	// return result["result"].(string)
-
-	// // 本地GLM3处理逻辑
-	// prompt := "以下是需要处理的文本内容，请筛选出其中比较重要的知识转化成三元组，输出成（头实体，关系，尾实体）的格式，不要包含其他文字，输出前请严格遵守要求。 \n"
-	// fullPrompt := prompt + content
-
-	// url := "http://172.16.20.10:8006/v1/chat/completions"
-	// // 构造请求数据
-	// payload := RequestData{
-	// 	Model:       "chatglm3-6b",
-	// 	Messages:    []Message{{Role: "user", Content: fullPrompt}},
-	// 	Temperature: 0.7,
-	// 	TopP:        0.9,
-	// 	MaxTokens:   2000,
-	// 	Stream:      false,
-	// }
-	// // 将payload编码为JSON格式的字节切片
-	// jsonPayload, err := json.Marshal(payload)
-	// if err != nil {
-	// 	log.Fatalf("Error marshaling payload: %v", err)
-	// }
-
-	// // 创建HTTP请求
-	// req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
-	// if err != nil {
-	// 	log.Fatalf("Error creating HTTP request: %v", err)
-	// }
-
-	// // 设置请求头
-	// req.Header.Set("Content-Type", "application/json")
-
-	// // 发送请求并获取响应
-	// client := &http.Client{}
-	// resp, err := client.Do(req)
-	// if err != nil {
-	// 	log.Fatalf("Error making HTTP request: %v", err)
-	// }
-	// defer resp.Body.Close()
-
-	// if resp.StatusCode != http.StatusOK {
-	// 	log.Printf("Error: Status Code %d", resp.StatusCode)
-	// 	return ""
-	// }
-
-	// // 读取响应体
-	// responseBody, err := ioutil.ReadAll(resp.Body)
-	// if err != nil {
-	// 	log.Fatalf("Error reading response body: %v", err)
-	// }
-
-	// // 打印返回数据调试
-	// fmt.Println("Response Body:", string(responseBody))
-
-	// var responseData ResponseData
-	// if err := json.Unmarshal(responseBody, &responseData); err != nil {
-	// 	log.Printf("Error unmarshaling response: %v", err)
-	// 	return ""
-	// }
-
-	// if len(responseData.Choices) == 0 {
-	// 	log.Println("Error: Choices is empty")
-	// 	return ""
-	// }
-
-	// responseText := responseData.Choices[0].Message.Content
-	// return responseText
-
-	// GLM4 http调用逻辑（API密钥从环境变量读取，避免硬编码）
-	apiKey := os.Getenv("GLM_API_KEY")
 	prompt := `你是知识图谱构建专家。请从下面的文本中抽取知识三元组。
 
 抽取规则：
@@ -287,57 +110,15 @@ func TypeInModel(content string) string {
 	// RAG向量检索已移除：长文本与精简三元组的向量相似度对比意义不大，
 	// 改为通过提示词工程提升抽取质量（实体规范化、few-shot示例等）
 
-	model := os.Getenv("GLM_MODEL")
-	if model == "" {
-		model = "glm-4-flash" // 当前唯一免费可用；如需切换在 .env 配 GLM_MODEL
-	}
-
-	payload := map[string]interface{}{
-		"model": model,
-		"messages": []map[string]interface{}{
-			{
-				"role":    "user",
-				"content": prompt + content,
-			},
-		},
-	}
-	// 将payload编码为JSON格式的字节切片
-	jsonPayload, _ := json.Marshal(payload)
-
-	// 创建HTTP请求
-	req, _ := http.NewRequest("POST", llmURL, bytes.NewBuffer(jsonPayload))
-
-	// 设置请求头
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	// 发送请求并获取响应
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	// REQ-006：经 eino ChatModel 调用（utils/llm 统一封装）；
+	// llmURL 保持完整端点语义（测试可替换为 mock 地址，由 ChatWithURL 派生 BaseURL）；
+	// 超时默认 60s（GLM_TIMEOUT 可配），失败/超时返回空串 → 该块跳过（降级①）
+	respText, err := llm.ChatWithURL(context.Background(), llmURL, prompt+content, llm.GLMTimeout())
 	if err != nil {
-		slog.Error("调用LLM接口失败", "url", llmURL, "error", err)
+		slog.Error("调用LLM接口失败", "error", err)
 		return ""
 	}
-	defer resp.Body.Close()
-
-	// 读取响应体
-	responseBody, _ := ioutil.ReadAll(resp.Body)
-
-	// 打印返回数据调试
-	// fmt.Println("Response Body:", string(responseBody))
-
-	var responseData ResponseData
-	if err := json.Unmarshal(responseBody, &responseData); err != nil {
-		return ""
-	}
-
-	if len(responseData.Choices) == 0 {
-		slog.Warn("LLM响应为空", "choices_len", string(responseBody))
-		return ""
-	}
-
-	responseText := responseData.Choices[0].Message.Content
-	return responseText
+	return respText
 
 }
 

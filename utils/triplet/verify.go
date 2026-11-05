@@ -1,25 +1,22 @@
 package triplet
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log/slog"
-	"net/http"
-	"os"
 	"strings"
 	"time"
+
+	"SSE/utils/llm"
 )
 
 // 默认配置
 const (
 	// 验证失败重试次数（总尝试 = 1 + verifyRetry）
 	verifyRetry = 1
-	// 验证接口默认地址
+	// 验证接口默认地址（完整端点；实际请求经 llm.ChatWithURL 派生 BaseURL 走 eino ChatModel）
 	DefaultVerifyURL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-	// 验证用模型缺省值（GLM_MODEL 未配置时，与抽取/判定共用免费模型）
-	DefaultVerifyModel = "glm-4-flash"
 )
 
 // 包级变量（导出以便测试替换为 mock 地址）：验证接口地址、单次调用超时（与 rag 包判定超时一致）
@@ -27,14 +24,6 @@ var (
 	VerifyURL     = DefaultVerifyURL
 	VerifyTimeout = 15 * time.Second
 )
-
-// verifyModelName 读取验证用模型名（环境变量GLM_MODEL覆盖，与 use_model.go/rag 共用）
-func verifyModelName() string {
-	if v := os.Getenv("GLM_MODEL"); v != "" {
-		return v
-	}
-	return DefaultVerifyModel
-}
 
 // verifyPromptTpl 验证归一 prompt：逐条判定忠实性 + 返回实体规范名
 const verifyPromptTpl = `你是知识图谱质量审核员。下面是一段原文和从中抽取的候选三元组，请逐条判定：
@@ -152,51 +141,10 @@ func parseVerifyResponse(text string) ([]verifyItem, error) {
 	return items, nil
 }
 
-// callVerifyLLM 调用 GLM 接口执行验证，返回模型文本输出
+// callVerifyLLM 调用验证接口执行验证，返回模型文本输出。
+// REQ-006 迁移为 eino ChatModel（与抽取共用 utils/llm 统一封装）：
+// VerifyURL 保持完整端点语义（测试可注入 mock 地址），由 ChatWithURL 派生
+// OpenAI 兼容 BaseURL；模型名/APIKey 由 llm 包按环境变量统一读取。
 func callVerifyLLM(prompt string) (string, error) {
-	payload := map[string]interface{}{
-		"model": verifyModelName(),
-		"messages": []map[string]interface{}{
-			{"role": "user", "content": prompt},
-		},
-	}
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("构造验证请求失败: %w", err)
-	}
-
-	req, err := http.NewRequest("POST", VerifyURL, bytes.NewBuffer(jsonPayload))
-	if err != nil {
-		return "", fmt.Errorf("创建验证请求失败: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+os.Getenv("GLM_API_KEY"))
-	req.Header.Set("Content-Type", "application/json")
-
-	// 发送请求并获取响应（超时可配置，避免 LLM 挂起阻塞抽取流程）
-	client := &http.Client{Timeout: VerifyTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("调用验证接口失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	responseBody, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("读取验证响应失败: %w", err)
-	}
-
-	var responseData struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(responseBody, &responseData); err != nil {
-		return "", fmt.Errorf("解析验证响应失败: %w", err)
-	}
-	if len(responseData.Choices) == 0 {
-		return "", fmt.Errorf("验证响应为空: %s", string(responseBody))
-	}
-	return responseData.Choices[0].Message.Content, nil
+	return llm.ChatWithURL(context.Background(), VerifyURL, prompt, VerifyTimeout)
 }

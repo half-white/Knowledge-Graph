@@ -1,13 +1,12 @@
 package embedding
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"time"
+
+	"github.com/cloudwego/eino-ext/components/embedding/ollama"
 )
 
 // 配置默认值（可通过环境变量覆盖：OLLAMA_URL / EMBED_MODEL）
@@ -28,56 +27,35 @@ func getEnv(key, def string) string {
 	return def
 }
 
-// Embed 调用Ollama embedding接口生成文本向量
+// Embed 调用Ollama embedding接口生成文本向量（REQ-006 迁移为 eino-ext Ollama Embedder，
+// 底层走 /api/embed 新接口，返回 L2 归一化向量）。eino 返回 []float64，此处转回 []float32。
+// 与迁移前 /api/embeddings 接口仅归一化差异（方向精确一致 cos=1.0）；Neo4j cosine
+// score 与向量范数无关，REQ-004 相似度阈值体系零漂移（REQ-006 design 变更 #1）。
 func Embed(text string) ([]float32, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	// 每次调用动态读取配置，支持运行时调整与测试覆盖
-	baseURL := getEnv("OLLAMA_URL", ollamaURL)
-	model := getEnv("EMBED_MODEL", embedModel)
-
-	// 构造请求数据
-	payload := map[string]interface{}{
-		"model":  model,
-		"prompt": text,
-	}
-	jsonPayload, err := json.Marshal(payload)
+	emb, err := ollama.NewEmbedder(ctx, &ollama.EmbeddingConfig{
+		BaseURL: getEnv("OLLAMA_URL", ollamaURL),
+		Model:   getEnv("EMBED_MODEL", embedModel),
+		Timeout: timeout,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("构造请求失败: %v", err)
+		return nil, fmt.Errorf("构造Embedder失败: %w", err)
 	}
 
-	// 创建HTTP请求
-	req, err := http.NewRequest("POST", baseURL+"/api/embeddings", bytes.NewBuffer(jsonPayload))
+	vectors, err := emb.EmbedStrings(ctx, []string{text})
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %v", err)
+		return nil, fmt.Errorf("调用embedding服务失败: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-
-	// 发送请求并获取响应
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("调用embedding服务失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	// 读取响应体
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("embedding服务返回异常状态码: %d", resp.StatusCode)
-	}
-
-	// 解析响应
-	var result struct {
-		Embedding []float32 `json:"embedding"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %v", err)
-	}
-	if len(result.Embedding) == 0 {
+	if len(vectors) == 0 || len(vectors[0]) == 0 {
 		return nil, fmt.Errorf("embedding结果为空")
 	}
 
-	return result.Embedding, nil
+	vec := make([]float32, len(vectors[0]))
+	for i, v := range vectors[0] {
+		vec[i] = float32(v)
+	}
+	return vec, nil
 }
