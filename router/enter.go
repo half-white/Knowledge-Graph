@@ -2,9 +2,13 @@ package router
 
 import (
 	"log/slog"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 type RouterGroup struct {
@@ -31,9 +35,13 @@ func InitRouter() *gin.Engine {
 	router.Use(RequestLogger())
 
 	// 健康检查端点（供容器 healthcheck / CI 探测；返回 200）
-	router.GET("/healthz", func(c *gin.Context) {
-		c.String(200, "ok")
-	})
+	router.GET("/healthz", healthz)
+
+	// swagger 文档页：默认关闭（生产不暴露接口信息）；config.yml server.swagger
+	// 或环境变量 SSE_SWAGGER 控制开启，取值语义与 logger.envBool 一致（REQ-007）
+	if envBool("SSE_SWAGGER", false) {
+		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	}
 
 	// // 路由:渲染首页
 	// router.GET("/", func(c *gin.Context) {
@@ -89,4 +97,28 @@ func RequestLogger() gin.HandlerFunc {
 			"errors", c.Errors.String(),
 		)
 	}
+}
+
+// healthz 存活探针：供容器 healthcheck / CI 探测，恒返回 200 与文本 ok
+// @Summary      健康检查
+// @Description  存活探针，供容器 healthcheck / CI 探测，恒返回 HTTP 200 与文本 ok
+// @Tags         系统
+// @Produce      plain
+// @Success      200 {string} string "ok"
+// @Router       /healthz [get]
+func healthz(c *gin.Context) {
+	c.String(200, "ok")
+}
+
+// envBool 读取布尔环境变量：true/1/yes/on 为真，false/0/no/off 为假，
+// 未设置或无法识别取默认值。与 logger.envBool 语义保持一致（REQ-007）。
+func envBool(key string, def bool) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch v {
+	case "true", "1", "yes", "on":
+		return true
+	case "false", "0", "no", "off":
+		return false
+	}
+	return def
 }

@@ -17,6 +17,9 @@
 # 服务监听地址（SSE_ADDR；宿主机原生运行默认 127.0.0.1:8080）
 # server:
 #   addr: "127.0.0.1:8080"
+#   Swagger 文档页开关（SSE_SWAGGER；true/1/yes/on 开启，默认关闭；
+#   开启后访问 /swagger/index.html 查看接口文档，生产建议关闭）
+#   swagger: "false"
 
 # Neo4j 图数据库（SSE_NEO4J_URI / _USER / _PASSWORD）
 # neo4j:

@@ -27,7 +27,8 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Addr Raw `yaml:"addr"`
+	Addr    Raw `yaml:"addr"`
+	Swagger Raw `yaml:"swagger"`
 }
 
 type Neo4jConfig struct {
@@ -94,6 +95,7 @@ func Load() {
 // apply 把非空的配置项注入到项目各处读取的环境变量。
 func (c *Config) apply() {
 	setEnv("SSE_ADDR", string(c.Server.Addr))
+	setEnv("SSE_SWAGGER", string(c.Server.Swagger))
 
 	setEnv("SSE_NEO4J_URI", string(c.Neo4j.URI))
 	setEnv("SSE_NEO4J_USER", string(c.Neo4j.User))

@@ -83,9 +83,9 @@ func check(t Triplet) (string, bool) {
 		return DroppedLen, false
 	}
 	// 关系词黑名单（空洞关系）
-	// if emptyRelations[t.Relation] {
-	// 	return DroppedBlacklist, false
-	// }
+	if emptyRelations[t.Relation] {
+		return DroppedBlacklist, false
+	}
 	// 关系词字符白名单
 	if !validRelationRe.MatchString(t.Relation) {
 		return DroppedFormat, false

@@ -1,9 +1,13 @@
 # ---- 版本控制 / 编辑器 ----
 .git
 .gitignore
-docs/
+# 仅排除 defspec 需求文档；docs/swagger 生成物是编译必需（SSE/docs/swagger 导入），须进构建上下文
+docs/defspec/
 .vscode/
 .DS_Store
+
+# ---- 依赖快照（不入库；镜像构建统一经 go mod download 拉取，保证与 CI 一致） ----
+vendor/
 
 # ---- 本地构建产物（不应进镜像） ----
 SSE

@@ -5,18 +5,21 @@
 # ============================================================
 
 # ---------- 构建阶段 ----------
-FROM golang:1.23 AS build
+FROM golang:1.24 AS build
 WORKDIR /src
 
-# 先拷贝依赖清单与 vendor，最大化利用构建缓存
+# 先拷贝依赖清单并下载依赖（最大化利用构建缓存；vendor 不入库，
+# 构建经模块代理拉取，与 Jenkins 静态检查阶段使用同一 GOPROXY）
 COPY go.mod go.sum ./
-COPY vendor ./vendor
+ENV GOPROXY=https://goproxy.cn,direct
+RUN go mod download
 
-# 拷贝源码（.dockerignore 已排除 node_modules/dist/logs 等）
+# 拷贝源码（.dockerignore 已排除 node_modules/dist/logs/defspec/vendor 等）
 COPY . .
 
-# 纯静态编译（vendor 目录随仓库提交，构建不需要外网拉依赖）
-ENV CGO_ENABLED=0 GOFLAGS=-mod=vendor GOTOOLCHAIN=local
+# 纯静态编译（go.mod 要求 go >= 1.24，镜像版本须与之匹配；
+# GOTOOLCHAIN=local 禁止构建期自动下载工具链）
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 RUN go build -trimpath -ldflags="-s -w" -o /out/SSE .
 
 # ---------- 运行阶段 ----------

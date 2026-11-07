@@ -1,9 +1,16 @@
-# 忽略整个 docs/ 目录（含 DefSpec 全部文件：模板、指令、需求文档、规格）
-docs/
+# 忽略 docs/ 目录内容（DefSpec 全部文件：模板、指令、需求文档、规格），
+# 放行 docs/swagger/（swag 生成的接口文档，REQ-007，入库供 CI/他人离线编译）
+docs/*
+!docs/swagger/
 
 # 编译产物
 SSE.exe
 SSE
+
+# Go 依赖快照不入库（vendor 仅本地离线开发用）：
+# 依赖事实源为 go.mod/go.sum，CI 与镜像构建经 go mod download 拉取
+# （GOPROXY=https://goproxy.cn,direct，与 Dockerfile/Jenkinsfile 保持一致）
+vendor/
 
 # 日志输出目录（由 logger 包按天生成，Promtail 采集）
 logs/

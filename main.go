@@ -9,8 +9,19 @@ import (
 	"SSE/router"
 	"log/slog"
 	"os"
+
+	// swag 生成的接口文档（REQ-007）：docs/swagger 目录被 .gitignore 放行入库，
+	// 匿名导入触发包内 init 注册文档，供 gin-swagger 托管 /swagger 文档页
+	_ "SSE/docs/swagger"
 )
 
+// @Title        SSE 知识图谱服务
+// @Version      1.0
+// @Description  一键生成知识图谱服务：文本/PDF 上传 → LLM 三元组抽取 → Neo4j 图谱构建。
+// @Description  统一响应格式 {code, data, msg}：code=0 成功，code=7 失败，HTTP 恒为 200。
+// @Description  成功响应的 data 为 ECharts 图谱 JSON 的字符串形式（前端 JSON.parse 后渲染），
+// @Description  msg 为三元组抽取文本明细。接口注释规范见 README「接口文档」章节。
+// @Host         localhost:8080
 func main() {
 	// 加载项目配置（config/config.yml，须在任何日志/数据库/密钥读取之前调用）
 	config.Load()

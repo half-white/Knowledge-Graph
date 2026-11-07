@@ -61,8 +61,8 @@ pipeline {
                 sh """
                     docker run --rm \
                       -v ${CI_ROOT}:/src -w /src \
-                      -e GOFLAGS=-mod=vendor -e GOTOOLCHAIN=local \
-                      golang:1.23 sh -c 'go vet ./... && go test ./...'
+                      -e GOTOOLCHAIN=local -e GOPROXY=https://goproxy.cn,direct \
+                      golang:1.24 sh -c 'go mod download && go vet ./... && go test ./...'
                 """
             }
         }

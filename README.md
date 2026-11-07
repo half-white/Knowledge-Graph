@@ -20,9 +20,10 @@ utils/                工具库（rag/ 向量检索、embedding/、pdf/word 解�
 frontend/             Vue3 + Vite 前端项目
 deploy/               部署编排（sse-app 应用栈 / observability 日志观测 / jenkins）
 resource/doc/         运行时 PDF 上传目录（容器内挂载为持久卷）
-vendor/               Go 依赖快照（离线编译）
+vendor/               本地依赖快照（已不入库；依赖以 go.mod/go.sum 为准，CI/镜像构建经 go mod download 拉取）
 triplets.csv          示例三元组数据（头实体,关系,尾实体），仅供演示参考，代码不读取
 logs/                 运行时日志输出（已 gitignore）
+docs/swagger/         swag 生成的接口文档（docs.go/swagger.json，入库；注释变更后需重新生成）
 docs/defspec/         DefSpec 需求工作流文档（已 gitignore）
 ```
 
@@ -38,3 +39,20 @@ docker compose -f deploy/sse-app/docker-compose.yml up -d --build
 ```
 
 更多部署与 CI/CD 说明见 `deploy/README-CICD.md` 与 `deploy/sse-app/README.md`。
+
+## 接口文档（Swagger）
+
+接口文档由 [swag](https://github.com/swaggo/swag) 注释驱动生成，源码即文档，无外部平台依赖：
+
+- **注释位置**：全局信息在 `main.go`（@Title/@Description 等）；接口信息在各 handler
+  上方（`api/` 包）。`@Router` 必须与 `router/` 实际注册的路由一致——只注释真实挂载的接口
+- **开启文档页**（默认关闭，生产不暴露接口信息）：
+  1. `config/config.yml` 中设置 `server.swagger: "true"`（或环境变量 `SSE_SWAGGER=true`，
+     取值语义与日志开关一致：true/1/yes/on 开，false/0/no/off 关）
+  2. 启动服务后访问 `http://127.0.0.1:8080/swagger/index.html`
+- **修改注释后重新生成**（开发机装一次 CLI，版本与 go.mod 中 `swaggo/swag` 一致）：
+  ```bash
+  go install github.com/swaggo/swag/cmd/swag@v1.16.6
+  swag init -g main.go -o docs/swagger --exclude vendor
+  ```
+- 生成物 `docs/swagger/` 已入库，CI 与其他机器无需安装 CLI

@@ -1,0 +1,153 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "一键生成知识图谱服务：文本/PDF 上传 → LLM 三元组抽取 → Neo4j 图谱构建。\n统一响应格式 {code, data, msg}：code=0 成功，code=7 失败，HTTP 恒为 200。\n成功响应的 data 为 ECharts 图谱 JSON 的字符串形式（前端 JSON.parse 后渲染），\nmsg 为三元组抽取文本明细。接口注释规范见 README「接口文档」章节。",
+        "title": "SSE 知识图谱服务",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "paths": {
+        "/api/model": {
+            "post": {
+                "description": "文本按语义分块并发抽取三元组（LLM），验证归一去重后写入 Neo4j，返回 ECharts 图谱数据\ndata 为图谱 JSON 的字符串形式（结构 {nodes,links,categories}，前端 JSON.parse 后渲染），msg 为三元组抽取文本明细",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "图谱生成"
+                ],
+                "summary": "文本生成图谱",
+                "parameters": [
+                    {
+                        "description": "待抽取文本",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model_api.UseModelRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "code=0 成功；code=7 失败",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "string"
+                                        },
+                                        "msg": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/upload": {
+            "post": {
+                "description": "上传 PDF，经 python OCR 提取文本后走与文本生成相同的抽取管线，返回 ECharts 图谱数据\ndata/msg 含义与 /api/model 相同；上传与 OCR 环节失败时 code=7 并给出中文提示",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "图谱生成"
+                ],
+                "summary": "PDF 上传生成图谱",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "PDF 文件",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "code=0 成功；code=7 失败",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "string"
+                                        },
+                                        "msg": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/healthz": {
+            "get": {
+                "description": "存活探针，供容器 healthcheck / CI 探测，恒返回 HTTP 200 与文本 ok",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "系统"
+                ],
+                "summary": "健康检查",
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "model_api.UseModelRequest": {
+            "type": "object",
+            "required": [
+                "title"
+            ],
+            "properties": {
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "response.Response": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer"
+                },
+                "data": {},
+                "msg": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}
