@@ -6,7 +6,7 @@ import (
 	"SSE/flag"
 	"SSE/global"
 	"SSE/logger"
-	"SSE/router"
+	"SSE/internal/router"
 	"log/slog"
 	"os"
 

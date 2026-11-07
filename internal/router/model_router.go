@@ -1,6 +1,6 @@
 package router
 
-import "SSE/api"
+import "SSE/internal/api"
 
 func (router RouterGroup) ModelRouter() {
 	app := api.ApiGroupApp.ModelApi

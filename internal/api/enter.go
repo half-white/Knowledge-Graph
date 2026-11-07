@@ -1,8 +1,8 @@
 package api
 
 import (
-	"SSE/api/graph_api"
-	"SSE/api/model_api"
+	"SSE/internal/api/graph_api"
+	"SSE/internal/api/model_api"
 )
 
 type ApiGroup struct {

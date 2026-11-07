@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,16 +37,6 @@ type UseModelRequest struct {
 	Title string `json:"title" binding:"required" msg:"请输入内容"`
 }
 
-// UseModel 输入文本，抽取三元组并生成知识图谱
-// @Summary      文本生成图谱
-// @Description  文本按语义分块并发抽取三元组（LLM），验证归一去重后写入 Neo4j，返回 ECharts 图谱数据
-// @Description  data 为图谱 JSON 的字符串形式（结构 {nodes,links,categories}，前端 JSON.parse 后渲染），msg 为三元组抽取文本明细
-// @Tags         图谱生成
-// @Accept       json
-// @Produce      json
-// @Param        request body UseModelRequest true "待抽取文本"
-// @Success      200 {object} response.Response{data=string,msg=string} "code=0 成功；code=7 失败"
-// @Router       /api/model [post]
 func (ModelApi) UseModel(c *gin.Context) {
 	//向模型中传递参数的逻辑
 	var cr UseModelRequest
@@ -694,15 +685,6 @@ func getProjectRoot() string {
 }
 
 // GetPdf 接收前端传递过来的pdf并且传递给大模型识别
-// @Summary      PDF 上传生成图谱
-// @Description  上传 PDF，经 python OCR 提取文本后走与文本生成相同的抽取管线，返回 ECharts 图谱数据
-// @Description  data/msg 含义与 /api/model 相同；上传与 OCR 环节失败时 code=7 并给出中文提示
-// @Tags         图谱生成
-// @Accept       multipart/form-data
-// @Produce      json
-// @Param        file formData file true "PDF 文件"
-// @Success      200 {object} response.Response{data=string,msg=string} "code=0 成功；code=7 失败"
-// @Router       /api/upload [post]
 func (ModelApi) GetPdf(c *gin.Context) {
 	// 性能监控：创建请求级追踪器，函数结束时自动汇总输出（REQ-003）
 	trace := metrics.StartTrace("pdf")
@@ -714,19 +696,25 @@ func (ModelApi) GetPdf(c *gin.Context) {
 
 	// 若文件夹不存在则自动创建
 	if err := os.MkdirAll(upload, os.ModePerm); err != nil {
-		response.FailWithMessage("创建上传目录失败", c)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "创建上传目录失败",
+		})
 		return
 	}
 
 	file, err := c.FormFile("file")
 	if err != nil {
-		response.FailWithMessage("未找到文件", c)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"message": "未找到文件",
+		})
 		return
 	}
 
 	// 检查文件名是否为空
 	if file.Filename == "" {
-		response.FailWithMessage("文件名为空", c)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"message": "文件名为空",
+		})
 		return
 	}
 	slog.Info("接收到PDF上传", "filename", file.Filename)
@@ -737,7 +725,9 @@ func (ModelApi) GetPdf(c *gin.Context) {
 	// 保存文件到指定目录
 	if err := c.SaveUploadedFile(file, savePath); err != nil {
 		slog.Error("保存上传文件失败", "filename", file.Filename, "save_path", savePath, "error", err)
-		response.FailWithMessage("文件保存失败", c)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "文件保存失败",
+		})
 		return
 	}
 

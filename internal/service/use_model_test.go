@@ -1,4 +1,4 @@
-package model_api
+package service
 
 import (
 	"encoding/json"
